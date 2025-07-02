@@ -24,139 +24,7 @@ VST = TypeVar("VST", bound=VectorStore)
 
 
 class AimlapiVectorStore(VectorStore):
-    # TODO: Replace all TODOs in docstring.
-    """Aimlapi vector store integration.
-
-    # TODO: Replace with relevant packages, env vars.
-    Setup:
-        Install ``langchain-aimlapi`` and set environment variable ``AIMLAPI_API_KEY``.
-
-        .. code-block:: bash
-
-            pip install -U langchain-aimlapi
-            export AIMLAPI_API_KEY="your-api-key"
-
-    # TODO: Populate with relevant params.
-    Key init args — indexing params:
-        collection_name: str
-            Name of the collection.
-        embedding_function: Embeddings
-            Embedding function to use.
-
-    # TODO: Populate with relevant params.
-    Key init args — client params:
-        client: Optional[Client]
-            Client to use.
-        connection_args: Optional[dict]
-            Connection arguments.
-
-    # TODO: Replace with relevant init params.
-    Instantiate:
-        .. code-block:: python
-
-            from langchain_aimlapi.vectorstores import AimlapiVectorStore
-            from langchain_openai import OpenAIEmbeddings
-
-            vector_store = AimlapiVectorStore(
-                collection_name="foo",
-                embedding_function=OpenAIEmbeddings(),
-                connection_args={"uri": "./foo.db"},
-                # other params...
-            )
-
-    # TODO: Populate with relevant variables.
-    Add Documents:
-        .. code-block:: python
-
-            from langchain_core.documents import Document
-
-            document_1 = Document(page_content="foo", metadata={"baz": "bar"})
-            document_2 = Document(page_content="thud", metadata={"bar": "baz"})
-            document_3 = Document(page_content="i will be deleted :(")
-
-            documents = [document_1, document_2, document_3]
-            ids = ["1", "2", "3"]
-            vector_store.add_documents(documents=documents, ids=ids)
-
-    # TODO: Populate with relevant variables.
-    Delete Documents:
-        .. code-block:: python
-
-            vector_store.delete(ids=["3"])
-
-    # TODO: Fill out with relevant variables and example output.
-    Search:
-        .. code-block:: python
-
-            results = vector_store.similarity_search(query="thud",k=1)
-            for doc in results:
-                print(f"* {doc.page_content} [{doc.metadata}]")
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Fill out with relevant variables and example output.
-    Search with filter:
-        .. code-block:: python
-
-            results = vector_store.similarity_search(query="thud",k=1,filter={"bar": "baz"})
-            for doc in results:
-                print(f"* {doc.page_content} [{doc.metadata}]")
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Fill out with relevant variables and example output.
-    Search with score:
-        .. code-block:: python
-
-            results = vector_store.similarity_search_with_score(query="qux",k=1)
-            for doc, score in results:
-                print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Fill out with relevant variables and example output.
-    Async:
-        .. code-block:: python
-
-            # add documents
-            # await vector_store.aadd_documents(documents=documents, ids=ids)
-
-            # delete documents
-            # await vector_store.adelete(ids=["3"])
-
-            # search
-            # results = vector_store.asimilarity_search(query="thud",k=1)
-
-            # search with score
-            results = await vector_store.asimilarity_search_with_score(query="qux",k=1)
-            for doc,score in results:
-                print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Fill out with relevant variables and example output.
-    Use as Retriever:
-        .. code-block:: python
-
-            retriever = vector_store.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": 1, "fetch_k": 2, "lambda_mult": 0.5},
-            )
-            retriever.invoke("thud")
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    """  # noqa: E501
+    """In-memory vector store using cosine similarity."""
 
     def __init__(self, embedding: Embeddings) -> None:
         """Initialize with the given embedding function.
@@ -169,11 +37,11 @@ class AimlapiVectorStore(VectorStore):
 
     @classmethod
     def from_texts(
-        cls: Type[AimlapiVectorStore],
-        texts: List[str],
-        embedding: Embeddings,
-        metadatas: Optional[List[dict]] = None,
-        **kwargs: Any,
+            cls: Type[AimlapiVectorStore],
+            texts: List[str],
+            embedding: Embeddings,
+            metadatas: Optional[List[dict]] = None,
+            **kwargs: Any,
     ) -> AimlapiVectorStore:
         store = cls(
             embedding=embedding,
@@ -199,10 +67,10 @@ class AimlapiVectorStore(VectorStore):
         return self.embedding
 
     def add_documents(
-        self,
-        documents: List[Document],
-        ids: Optional[List[str]] = None,
-        **kwargs: Any,
+            self,
+            documents: List[Document],
+            ids: Optional[List[str]] = None,
+            **kwargs: Any,
     ) -> List[str]:
         """Add documents to the store."""
         texts = [doc.page_content for doc in documents]
@@ -284,11 +152,11 @@ class AimlapiVectorStore(VectorStore):
     # NOTE: the below helper method implements similarity search for in-memory
     # storage. It is optional and not a part of the vector store interface.
     def _similarity_search_with_score_by_vector(
-        self,
-        embedding: List[float],
-        k: int = 4,
-        filter: Optional[Callable[[Document], bool]] = None,
-        **kwargs: Any,
+            self,
+            embedding: List[float],
+            k: int = 4,
+            filter: Optional[Callable[[Document], bool]] = None,
+            **kwargs: Any,
     ) -> List[tuple[Document, float, List[float]]]:
         # get all docs with fixed order in list
         docs = list(self._database.values())
@@ -327,7 +195,7 @@ class AimlapiVectorStore(VectorStore):
         ]
 
     def similarity_search(
-        self, query: str, k: int = 4, **kwargs: Any
+            self, query: str, k: int = 4, **kwargs: Any
     ) -> List[Document]:
         embedding = self.embedding.embed_query(query)
         return [
@@ -348,7 +216,7 @@ class AimlapiVectorStore(VectorStore):
     #     return await asyncio.get_event_loop().run_in_executor(None, func)
 
     def similarity_search_with_score(
-        self, query: str, k: int = 4, **kwargs: Any
+            self, query: str, k: int = 4, **kwargs: Any
     ) -> List[Tuple[Document, float]]:
         embedding = self.embedding.embed_query(query)
         return [
