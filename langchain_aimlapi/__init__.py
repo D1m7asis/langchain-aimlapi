@@ -1,6 +1,7 @@
 from importlib import metadata
 
 from langchain_aimlapi.chat_models import ChatAimlapi
+from langchain_aimlapi.constants import AIMLAPI_HEADERS
 from langchain_aimlapi.document_loaders import AimlapiLoader
 from langchain_aimlapi.embeddings import AimlapiEmbeddings
 from langchain_aimlapi.imagegen import AimlapiImageGenerator
@@ -27,5 +28,6 @@ __all__ = [
     "AimlapiTool",
     "AimlapiImageGenerator",
     "AimlapiVideoGenerator",
+    "AIMLAPI_HEADERS",
     "__version__",
 ]
