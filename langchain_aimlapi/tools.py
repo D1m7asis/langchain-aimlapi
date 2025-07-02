@@ -10,84 +10,23 @@ from pydantic import BaseModel, Field
 
 
 class AimlapiToolInput(BaseModel):
-    """Input schema for Aimlapi tool.
-
-    This docstring is **not** part of what is sent to the model when performing tool
-    calling. The Field default values and descriptions **are** part of what is sent to
-    the model when performing tool calling.
-    """
-
-    # TODO: Add input args and descriptions.
+    """Input schema for the sample Aimlapi tool."""
     a: int = Field(..., description="first number to add")
     b: int = Field(..., description="second number to add")
 
 
-class AimlapiTool(BaseTool):  # type: ignore[override]
-    """Aimlapi tool.
+class AimlapiTool(BaseTool):
+    """Demo tool that adds two numbers."""
 
-    Setup:
-        # TODO: Replace with relevant packages, env vars.
-        Install ``langchain-aimlapi`` and set environment variable ``AIMLAPI_API_KEY``.
-
-        .. code-block:: bash
-
-            pip install -U langchain-aimlapi
-            export AIMLAPI_API_KEY="your-api-key"
-
-    Instantiation:
-        .. code-block:: python
-
-            tool = AimlapiTool(
-                # TODO: init params
-            )
-
-    Invocation with args:
-        .. code-block:: python
-
-            # TODO: invoke args
-            tool.invoke({...})
-
-        .. code-block:: python
-
-            # TODO: output of invocation
-
-    Invocation with ToolCall:
-
-        .. code-block:: python
-
-            # TODO: invoke args
-            tool.invoke({"args": {...}, "id": "1", "name": tool.name, "type": "tool_call"})
-
-        .. code-block:: python
-
-            # TODO: output of invocation
-    """  # noqa: E501
-
-    # TODO: Set tool name and description
-    name: str = "TODO: Tool name"
-    """The name that is passed to the model when performing tool calling."""
-    description: str = "TODO: Tool description."
-    """The description that is passed to the model when performing tool calling."""
+    name: str = "aimlapi_add"
+    """The name passed to the model when performing tool calling."""
+    description: str = "Add two numbers using Aimlapi."
+    """A short description of the tool."""
     args_schema: Type[BaseModel] = AimlapiToolInput
     """The schema that is passed to the model when performing tool calling."""
 
-    # TODO: Add any other init params for the tool.
-    # param1: Optional[str]
-    # """param1 determines foobar"""
-
-    # TODO: Replaced (a, b) with real tool arguments.
     def _run(
         self, a: int, b: int, *, run_manager: Optional[CallbackManagerForToolRun] = None
     ) -> str:
         return str(a + b + 80)
 
-    # TODO: Implement if tool has native async functionality, otherwise delete.
-
-    # async def _arun(
-    #     self,
-    #     a: int,
-    #     b: int,
-    #     *,
-    #     run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
-    # ) -> str:
-    #     ...

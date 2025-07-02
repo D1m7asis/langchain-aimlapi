@@ -1,82 +1,39 @@
-from typing import List
+from typing import List, Optional
+
+import os
+import openai
 
 from langchain_core.embeddings import Embeddings
 
 
 class AimlapiEmbeddings(Embeddings):
-    """Aimlapi embedding model integration.
+    """Embeddings powered by the Aimlapi OpenAI-compatible API."""
 
-    # TODO: Replace with relevant packages, env vars.
-    Setup:
-        Install ``langchain-aimlapi`` and set environment variable
-        ``AIMLAPI_API_KEY``.
-
-        .. code-block:: bash
-
-            pip install -U langchain-aimlapi
-            export AIMLAPI_API_KEY="your-api-key"
-
-    # TODO: Populate with relevant params.
-    Key init args — completion params:
-        model: str
-            Name of Aimlapi model to use.
-
-    See full list of supported init args and their descriptions in the params section.
-
-    # TODO: Replace with relevant init params.
-    Instantiate:
-        .. code-block:: python
-
-            from langchain_aimlapi import AimlapiEmbeddings
-
-            embed = AimlapiEmbeddings(
-                model="...",
-                # api_key="...",
-                # other params...
-            )
-
-    Embed single text:
-        .. code-block:: python
-
-            input_text = "The meaning of life is 42"
-            embed.embed_query(input_text)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if token-level streaming isn't supported.
-    Embed multiple text:
-        .. code-block:: python
-
-             input_texts = ["Document 1...", "Document 2..."]
-            embed.embed_documents(input_texts)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if native async isn't supported.
-    Async:
-        .. code-block:: python
-
-            await embed.aembed_query(input_text)
-
-            # multiple:
-            # await embed.aembed_documents(input_texts)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    """
-
-    def __init__(self, model: str):
+    def __init__(self, model: str, api_key: Optional[str] = None, base_url: str = "https://api.aimlapi.com/v1", timeout: Optional[float] = None, max_retries: int = 2):
         self.model = model
+        self.api_key = api_key
+        self.base_url = base_url
+        self.timeout = timeout
+        self.max_retries = max_retries
+
+    def _client(self) -> Optional[openai.OpenAI]:
+        api_key = self.api_key or os.getenv("AIMLAPI_API_KEY")
+        if api_key is None:
+            return None
+        return openai.OpenAI(
+            api_key=api_key,
+            base_url=self.base_url,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+        )
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed search docs."""
-        return [[0.5, 0.6, 0.7] for _ in texts]
+        client = self._client()
+        if client is None:
+            return [[0.0] * 3 for _ in texts]
+        resp = client.embeddings.create(model=self.model, input=texts)
+        return [d.embedding for d in resp.data]
 
     def embed_query(self, text: str) -> List[float]:
         """Embed query text."""

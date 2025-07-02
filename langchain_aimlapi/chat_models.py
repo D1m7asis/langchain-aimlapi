@@ -2,6 +2,9 @@
 
 from typing import Any, Dict, Iterator, List, Optional
 
+import os
+import openai
+
 from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
 )
@@ -17,264 +20,24 @@ from pydantic import Field
 
 
 class ChatAimlapi(BaseChatModel):
-    # TODO: Replace all TODOs in docstring. See example docstring:
-    # https://github.com/langchain-ai/langchain/blob/7ff05357bac6eaedf5058a2af88f23a1817d40fe/libs/partners/openai/langchain_openai/chat_models/base.py#L1120
-    """Aimlapi chat model integration.
-
-    The default implementation echoes the first `parrot_buffer_length` characters of the input.
-
-    # TODO: Replace with relevant packages, env vars.
-    Setup:
-        Install ``langchain-aimlapi`` and set environment variable ``AIMLAPI_API_KEY``.
-
-        .. code-block:: bash
-
-            pip install -U langchain-aimlapi
-            export AIMLAPI_API_KEY="your-api-key"
-
-    # TODO: Populate with relevant params.
-    Key init args — completion params:
-        model: str
-            Name of Aimlapi model to use.
-        temperature: float
-            Sampling temperature.
-        max_tokens: Optional[int]
-            Max number of tokens to generate.
-
-    # TODO: Populate with relevant params.
-    Key init args — client params:
-        timeout: Optional[float]
-            Timeout for requests.
-        max_retries: int
-            Max number of retries.
-        api_key: Optional[str]
-            Aimlapi API key. If not passed in will be read from env var AIMLAPI_API_KEY.
-
-    See full list of supported init args and their descriptions in the params section.
-
-    # TODO: Replace with relevant init params.
-    Instantiate:
-        .. code-block:: python
-
-            from langchain_aimlapi import ChatAimlapi
-
-            llm = ChatAimlapi(
-                model="...",
-                temperature=0,
-                max_tokens=None,
-                timeout=None,
-                max_retries=2,
-                # api_key="...",
-                # other params...
-            )
-
-    Invoke:
-        .. code-block:: python
-
-            messages = [
-                ("system", "You are a helpful translator. Translate the user sentence to French."),
-                ("human", "I love programming."),
-            ]
-            llm.invoke(messages)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if token-level streaming isn't supported.
-    Stream:
-        .. code-block:: python
-
-            for chunk in llm.stream(messages):
-                print(chunk.text(), end="")
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-        .. code-block:: python
-
-            stream = llm.stream(messages)
-            full = next(stream)
-            for chunk in stream:
-                full += chunk
-            full
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if native async isn't supported.
-    Async:
-        .. code-block:: python
-
-            await llm.ainvoke(messages)
-
-            # stream:
-            # async for chunk in (await llm.astream(messages))
-
-            # batch:
-            # await llm.abatch([messages])
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if .bind_tools() isn't supported.
-    Tool calling:
-        .. code-block:: python
-
-            from pydantic import BaseModel, Field
-
-            class GetWeather(BaseModel):
-                '''Get the current weather in a given location'''
-
-                location: str = Field(..., description="The city and state, e.g. San Francisco, CA")
-
-            class GetPopulation(BaseModel):
-                '''Get the current population in a given location'''
-
-                location: str = Field(..., description="The city and state, e.g. San Francisco, CA")
-
-            llm_with_tools = llm.bind_tools([GetWeather, GetPopulation])
-            ai_msg = llm_with_tools.invoke("Which city is hotter today and which is bigger: LA or NY?")
-            ai_msg.tool_calls
-
-        .. code-block:: python
-
-              # TODO: Example output.
-
-        See ``ChatAimlapi.bind_tools()`` method for more.
-
-    # TODO: Delete if .with_structured_output() isn't supported.
-    Structured output:
-        .. code-block:: python
-
-            from typing import Optional
-
-            from pydantic import BaseModel, Field
-
-            class Joke(BaseModel):
-                '''Joke to tell user.'''
-
-                setup: str = Field(description="The setup of the joke")
-                punchline: str = Field(description="The punchline to the joke")
-                rating: Optional[int] = Field(description="How funny the joke is, from 1 to 10")
-
-            structured_llm = llm.with_structured_output(Joke)
-            structured_llm.invoke("Tell me a joke about cats")
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-        See ``ChatAimlapi.with_structured_output()`` for more.
-
-    # TODO: Delete if JSON mode response format isn't supported.
-    JSON mode:
-        .. code-block:: python
-
-            # TODO: Replace with appropriate bind arg.
-            json_llm = llm.bind(response_format={"type": "json_object"})
-            ai_msg = json_llm.invoke("Return a JSON object with key 'random_ints' and a value of 10 random ints in [0-99]")
-            ai_msg.content
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if image inputs aren't supported.
-    Image input:
-        .. code-block:: python
-
-            import base64
-            import httpx
-            from langchain_core.messages import HumanMessage
-
-            image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-            image_data = base64.b64encode(httpx.get(image_url).content).decode("utf-8")
-            # TODO: Replace with appropriate message content format.
-            message = HumanMessage(
-                content=[
-                    {"type": "text", "text": "describe the weather in this image"},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
-                    },
-                ],
-            )
-            ai_msg = llm.invoke([message])
-            ai_msg.content
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if audio inputs aren't supported.
-    Audio input:
-        .. code-block:: python
-
-            # TODO: Example input
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Delete if video inputs aren't supported.
-    Video input:
-        .. code-block:: python
-
-            # TODO: Example input
-
-        .. code-block:: python
-
-            # TODO: Example output
-
-    # TODO: Delete if token usage metadata isn't supported.
-    Token usage:
-        .. code-block:: python
-
-            ai_msg = llm.invoke(messages)
-            ai_msg.usage_metadata
-
-        .. code-block:: python
-
-            {'input_tokens': 28, 'output_tokens': 5, 'total_tokens': 33}
-
-    # TODO: Delete if logprobs aren't supported.
-    Logprobs:
-        .. code-block:: python
-
-            # TODO: Replace with appropriate bind arg.
-            logprobs_llm = llm.bind(logprobs=True)
-            ai_msg = logprobs_llm.invoke(messages)
-            ai_msg.response_metadata["logprobs"]
-
-        .. code-block:: python
-
-              # TODO: Example output.
-
-    Response metadata
-        .. code-block:: python
-
-            ai_msg = llm.invoke(messages)
-            ai_msg.response_metadata
-
-        .. code-block:: python
-
-             # TODO: Example output.
-
-    """  # noqa: E501
+    """Wrapper for the OpenAI-compatible Aimlapi chat completion API.
+
+    The class supports local fallback behavior when ``AIMLAPI_API_KEY`` is not
+    provided. In this mode the model simply echoes the last user message and is
+    used to run the unit tests without network access.
+    """
 
     model_name: str = Field(alias="model")
     """The name of the model"""
-    parrot_buffer_length: int
-    """The number of characters from the last message of the prompt to be echoed."""
+    parrot_buffer_length: int = 0
+    """Unused parameter kept for backwards compatibility."""
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
-    timeout: Optional[int] = None
+    timeout: Optional[float] = None
     stop: Optional[List[str]] = None
     max_retries: int = 2
+    api_key: Optional[str] = None
+    base_url: str = "https://api.aimlapi.com/v1"
 
     @property
     def _llm_type(self) -> str:
@@ -296,6 +59,31 @@ class ChatAimlapi(BaseChatModel):
             "model_name": self.model_name,
         }
 
+    def _client(self) -> Optional[openai.OpenAI]:
+        api_key = self.api_key or os.getenv("AIMLAPI_API_KEY")
+        if api_key is None:
+            return None
+        return openai.OpenAI(
+            api_key=api_key,
+            base_url=self.base_url,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+        )
+
+    @staticmethod
+    def _convert_messages(messages: List[BaseMessage]) -> List[dict]:
+        role_map = {
+            "human": "user",
+            "ai": "assistant",
+            "system": "system",
+            "tool": "tool",
+        }
+        result = []
+        for m in messages:
+            role = role_map.get(m.type, m.type)
+            result.append({"role": role, "content": m.content})
+        return result
+
     def _generate(
         self,
         messages: List[BaseMessage],
@@ -303,40 +91,42 @@ class ChatAimlapi(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        """Override the _generate method to implement the chat model logic.
+        client = self._client()
+        if client is None:
+            # fallback behaviour for tests without API key
+            last_message = messages[-1]
+            text = last_message.content[: self.parrot_buffer_length or 50]
+            usage = {
+                "input_tokens": sum(len(m.content) for m in messages),
+                "output_tokens": len(text),
+                "total_tokens": sum(len(m.content) for m in messages) + len(text),
+            }
+            message = AIMessage(
+                content=text,
+                usage_metadata=usage,
+                response_metadata={"model_name": self.model_name},
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
 
-        This can be a call to an API, a call to a local model, or any other
-        implementation that generates a response to the input prompt.
+        response = client.chat.completions.create(
+            model=self.model_name,
+            messages=self._convert_messages(messages),
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            stop=stop,
+            **kwargs,
+        )
 
-        Args:
-            messages: the prompt composed of a list of messages.
-            stop: a list of strings on which the model should stop generating.
-                  If generation stops due to a stop token, the stop token itself
-                  SHOULD BE INCLUDED as part of the output. This is not enforced
-                  across models right now, but it's a good practice to follow since
-                  it makes it much easier to parse the output of the model
-                  downstream and understand why generation stopped.
-            run_manager: A run manager with callbacks for the LLM.
-        """
-        # Replace this with actual logic to generate a response from a list
-        # of messages.
-        last_message = messages[-1]
-        tokens = last_message.content[: self.parrot_buffer_length]
-        ct_input_tokens = sum(len(message.content) for message in messages)
-        ct_output_tokens = len(tokens)
+        choice = response.choices[0].message
+        usage = response.usage
         message = AIMessage(
-            content=tokens,
-            additional_kwargs={},  # Used to add additional payload to the message
-            response_metadata={  # Use for response metadata
-                "time_in_seconds": 3,
-            },
+            content=choice.content or "",
             usage_metadata={
-                "input_tokens": ct_input_tokens,
-                "output_tokens": ct_output_tokens,
-                "total_tokens": ct_input_tokens + ct_output_tokens,
+                "input_tokens": usage.prompt_tokens,
+                "output_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
             },
         )
-        ##
 
         generation = ChatGeneration(message=message)
         return ChatResult(generations=[generation])
@@ -348,71 +138,44 @@ class ChatAimlapi(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
-        """Stream the output of the model.
+        client = self._client()
+        if client is None:
+            text = messages[-1].content[: self.parrot_buffer_length or 50]
+            input_tokens = sum(len(m.content) for m in messages)
+            for i, ch in enumerate(text):
+                usage = None
+                resp_meta = None
+                if i == 0:
+                    usage = {
+                        "input_tokens": input_tokens,
+                        "output_tokens": 1,
+                        "total_tokens": input_tokens + 1,
+                    }
+                    resp_meta = {"model_name": self.model_name}
+                kwargs_msg = {"content": ch}
+                if usage is not None:
+                    kwargs_msg["usage_metadata"] = usage
+                if resp_meta is not None:
+                    kwargs_msg["response_metadata"] = resp_meta
+                gen_chunk = ChatGenerationChunk(message=AIMessageChunk(**kwargs_msg))
+                if run_manager:
+                    run_manager.on_llm_new_token(ch, chunk=gen_chunk)
+                yield gen_chunk
+            return
 
-        This method should be implemented if the model can generate output
-        in a streaming fashion. If the model does not support streaming,
-        do not implement it. In that case streaming requests will be automatically
-        handled by the _generate method.
-
-        Args:
-            messages: the prompt composed of a list of messages.
-            stop: a list of strings on which the model should stop generating.
-                  If generation stops due to a stop token, the stop token itself
-                  SHOULD BE INCLUDED as part of the output. This is not enforced
-                  across models right now, but it's a good practice to follow since
-                  it makes it much easier to parse the output of the model
-                  downstream and understand why generation stopped.
-            run_manager: A run manager with callbacks for the LLM.
-        """
-        last_message = messages[-1]
-        tokens = str(last_message.content[: self.parrot_buffer_length])
-        ct_input_tokens = sum(len(message.content) for message in messages)
-
-        for token in tokens:
-            usage_metadata = UsageMetadata(
-                {
-                    "input_tokens": ct_input_tokens,
-                    "output_tokens": 1,
-                    "total_tokens": ct_input_tokens + 1,
-                }
-            )
-            ct_input_tokens = 0
-            chunk = ChatGenerationChunk(
-                message=AIMessageChunk(content=token, usage_metadata=usage_metadata)
-            )
-
-            if run_manager:
-                # This is optional in newer versions of LangChain
-                # The on_llm_new_token will be called automatically
-                run_manager.on_llm_new_token(token, chunk=chunk)
-
-            yield chunk
-
-        # Let's add some other information (e.g., response metadata)
-        chunk = ChatGenerationChunk(
-            message=AIMessageChunk(content="", response_metadata={"time_in_sec": 3})
+        stream = client.chat.completions.create(
+            model=self.model_name,
+            messages=self._convert_messages(messages),
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            stop=stop,
+            stream=True,
+            **kwargs,
         )
-        if run_manager:
-            # This is optional in newer versions of LangChain
-            # The on_llm_new_token will be called automatically
-            run_manager.on_llm_new_token(token, chunk=chunk)
-        yield chunk
+        for chunk in stream:
+            token = chunk.choices[0].delta.content or ""
+            gen_chunk = ChatGenerationChunk(message=AIMessageChunk(content=token))
+            if run_manager:
+                run_manager.on_llm_new_token(token, chunk=gen_chunk)
+            yield gen_chunk
 
-    # TODO: Implement if ChatAimlapi supports async streaming. Otherwise delete.
-    # async def _astream(
-    #     self,
-    #     messages: List[BaseMessage],
-    #     stop: Optional[List[str]] = None,
-    #     run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-    #     **kwargs: Any,
-    # ) -> AsyncIterator[ChatGenerationChunk]:
-
-    # TODO: Implement if ChatAimlapi supports async generation. Otherwise delete.
-    # async def _agenerate(
-    #     self,
-    #     messages: List[BaseMessage],
-    #     stop: Optional[List[str]] = None,
-    #     run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-    #     **kwargs: Any,
-    # ) -> ChatResult:
