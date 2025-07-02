@@ -13,7 +13,7 @@ class AimlapiRetriever(BaseRetriever):
     k: int = 3
 
     def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs: Any
+            self, query: str, *, run_manager: CallbackManagerForRetrieverRun, **kwargs: Any
     ) -> List[Document]:
         k = kwargs.get("k", self.k)
         return [

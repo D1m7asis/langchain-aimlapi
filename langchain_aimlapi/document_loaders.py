@@ -11,4 +11,3 @@ class AimlapiLoader(BaseLoader):
 
     def lazy_load(self) -> Iterator[Document]:
         raise NotImplementedError()
-

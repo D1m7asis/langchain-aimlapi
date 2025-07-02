@@ -16,7 +16,9 @@ class AimlapiImageGenerator:
     timeout: Optional[float] = None
     max_retries: int = 2
 
-    def __init__(self, model: str = "dall-e-3", api_key: Optional[str] = None, base_url: str = "https://api.aimlapi.com/v1", timeout: Optional[float] = None, max_retries: int = 2) -> None:
+    def __init__(self, model: str = "dall-e-3", api_key: Optional[str] = None,
+                 base_url: str = "https://api.aimlapi.com/v1", timeout: Optional[float] = None,
+                 max_retries: int = 2) -> None:
         self.model = model
         self.api_key = api_key
         self.base_url = base_url

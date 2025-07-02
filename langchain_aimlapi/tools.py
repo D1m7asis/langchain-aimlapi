@@ -26,7 +26,6 @@ class AimlapiTool(BaseTool):
     """The schema that is passed to the model when performing tool calling."""
 
     def _run(
-        self, a: int, b: int, *, run_manager: Optional[CallbackManagerForToolRun] = None
+            self, a: int, b: int, *, run_manager: Optional[CallbackManagerForToolRun] = None
     ) -> str:
         return str(a + b + 80)
-

@@ -1,10 +1,9 @@
 """Aimlapi chat models."""
 
+import os
 from typing import Any, Dict, Iterator, List, Optional
 
-import os
 import openai
-
 from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
 )
@@ -14,7 +13,6 @@ from langchain_core.messages import (
     AIMessageChunk,
     BaseMessage,
 )
-from langchain_core.messages.ai import UsageMetadata
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import Field
 
@@ -85,11 +83,11 @@ class ChatAimlapi(BaseChatModel):
         return result
 
     def _generate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
     ) -> ChatResult:
         client = self._client()
         if client is None:
@@ -132,11 +130,11 @@ class ChatAimlapi(BaseChatModel):
         return ChatResult(generations=[generation])
 
     def _stream(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         client = self._client()
         if client is None:
@@ -178,4 +176,3 @@ class ChatAimlapi(BaseChatModel):
             if run_manager:
                 run_manager.on_llm_new_token(token, chunk=gen_chunk)
             yield gen_chunk
-
