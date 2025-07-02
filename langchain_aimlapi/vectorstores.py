@@ -37,11 +37,11 @@ class AimlapiVectorStore(VectorStore):
 
     @classmethod
     def from_texts(
-            cls: Type[AimlapiVectorStore],
-            texts: List[str],
-            embedding: Embeddings,
-            metadatas: Optional[List[dict]] = None,
-            **kwargs: Any,
+        cls: Type[AimlapiVectorStore],
+        texts: List[str],
+        embedding: Embeddings,
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
     ) -> AimlapiVectorStore:
         store = cls(
             embedding=embedding,
@@ -67,10 +67,10 @@ class AimlapiVectorStore(VectorStore):
         return self.embedding
 
     def add_documents(
-            self,
-            documents: List[Document],
-            ids: Optional[List[str]] = None,
-            **kwargs: Any,
+        self,
+        documents: List[Document],
+        ids: Optional[List[str]] = None,
+        **kwargs: Any,
     ) -> List[str]:
         """Add documents to the store."""
         texts = [doc.page_content for doc in documents]
@@ -152,11 +152,11 @@ class AimlapiVectorStore(VectorStore):
     # NOTE: the below helper method implements similarity search for in-memory
     # storage. It is optional and not a part of the vector store interface.
     def _similarity_search_with_score_by_vector(
-            self,
-            embedding: List[float],
-            k: int = 4,
-            filter: Optional[Callable[[Document], bool]] = None,
-            **kwargs: Any,
+        self,
+        embedding: List[float],
+        k: int = 4,
+        filter: Optional[Callable[[Document], bool]] = None,
+        **kwargs: Any,
     ) -> List[tuple[Document, float, List[float]]]:
         # get all docs with fixed order in list
         docs = list(self._database.values())
@@ -195,7 +195,7 @@ class AimlapiVectorStore(VectorStore):
         ]
 
     def similarity_search(
-            self, query: str, k: int = 4, **kwargs: Any
+        self, query: str, k: int = 4, **kwargs: Any
     ) -> List[Document]:
         embedding = self.embedding.embed_query(query)
         return [
@@ -216,7 +216,7 @@ class AimlapiVectorStore(VectorStore):
     #     return await asyncio.get_event_loop().run_in_executor(None, func)
 
     def similarity_search_with_score(
-            self, query: str, k: int = 4, **kwargs: Any
+        self, query: str, k: int = 4, **kwargs: Any
     ) -> List[Tuple[Document, float]]:
         embedding = self.embedding.embed_query(query)
         return [
