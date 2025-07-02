@@ -4,12 +4,20 @@ from typing import List, Optional
 import openai
 from langchain_core.embeddings import Embeddings
 
+from langchain_aimlapi.constants import AIMLAPI_HEADERS
+
 
 class AimlapiEmbeddings(Embeddings):
     """Embeddings powered by the Aimlapi OpenAI-compatible API."""
 
-    def __init__(self, model: str, api_key: Optional[str] = None, base_url: str = "https://api.aimlapi.com/v1",
-                 timeout: Optional[float] = None, max_retries: int = 2):
+    def __init__(
+        self,
+        model: str,
+        api_key: Optional[str] = None,
+        base_url: str = "https://api.aimlapi.com/v1",
+        timeout: Optional[float] = None,
+        max_retries: int = 2,
+    ):
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
@@ -25,6 +33,7 @@ class AimlapiEmbeddings(Embeddings):
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=self.max_retries,
+            default_headers=AIMLAPI_HEADERS,
         )
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:

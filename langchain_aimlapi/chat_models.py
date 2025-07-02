@@ -16,6 +16,8 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import Field
 
+from langchain_aimlapi.constants import AIMLAPI_HEADERS
+
 
 class ChatAimlapi(BaseChatModel):
     """Wrapper for the OpenAI-compatible Aimlapi chat completion API.
@@ -66,6 +68,7 @@ class ChatAimlapi(BaseChatModel):
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=self.max_retries,
+            default_headers=AIMLAPI_HEADERS,
         )
 
     @staticmethod
@@ -83,11 +86,11 @@ class ChatAimlapi(BaseChatModel):
         return result
 
     def _generate(
-            self,
-            messages: List[BaseMessage],
-            stop: Optional[List[str]] = None,
-            run_manager: Optional[CallbackManagerForLLMRun] = None,
-            **kwargs: Any,
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
     ) -> ChatResult:
         client = self._client()
         if client is None:
@@ -130,11 +133,11 @@ class ChatAimlapi(BaseChatModel):
         return ChatResult(generations=[generation])
 
     def _stream(
-            self,
-            messages: List[BaseMessage],
-            stop: Optional[List[str]] = None,
-            run_manager: Optional[CallbackManagerForLLMRun] = None,
-            **kwargs: Any,
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         client = self._client()
         if client is None:

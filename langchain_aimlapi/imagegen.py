@@ -6,6 +6,8 @@ from typing import List, Optional
 import openai
 from pydantic import Field
 
+from langchain_aimlapi.constants import AIMLAPI_HEADERS
+
 
 class AimlapiImageGenerator:
     """Generate images using the Aimlapi service."""
@@ -16,9 +18,14 @@ class AimlapiImageGenerator:
     timeout: Optional[float] = None
     max_retries: int = 2
 
-    def __init__(self, model: str = "dall-e-3", api_key: Optional[str] = None,
-                 base_url: str = "https://api.aimlapi.com/v1", timeout: Optional[float] = None,
-                 max_retries: int = 2) -> None:
+    def __init__(
+        self,
+        model: str = "dall-e-3",
+        api_key: Optional[str] = None,
+        base_url: str = "https://api.aimlapi.com/v1",
+        timeout: Optional[float] = None,
+        max_retries: int = 2,
+    ) -> None:
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
@@ -31,9 +38,16 @@ class AimlapiImageGenerator:
             base_url=self.base_url,
             timeout=self.timeout,
             max_retries=self.max_retries,
+            default_headers=AIMLAPI_HEADERS,
         )
 
-    def generate(self, prompt: str, n: int = 1, size: str = "1024x1024", response_format: str = "url") -> List[str]:
+    def generate(
+        self,
+        prompt: str,
+        n: int = 1,
+        size: str = "1024x1024",
+        response_format: str = "url",
+    ) -> List[str]:
         client = self._client()
         resp = client.images.generate(
             model=self.model,

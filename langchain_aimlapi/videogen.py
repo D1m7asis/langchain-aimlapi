@@ -6,6 +6,8 @@ from typing import List, Optional
 import httpx
 from pydantic import Field
 
+from langchain_aimlapi.constants import AIMLAPI_HEADERS
+
 
 class AimlapiVideoGenerator:
     """Generate videos using the Aimlapi service."""
@@ -16,9 +18,14 @@ class AimlapiVideoGenerator:
     timeout: Optional[float] = None
     max_retries: int = 2
 
-    def __init__(self, model: str = "google/veo3", api_key: Optional[str] = None,
-                 base_url: str = "https://api.aimlapi.com/v1", timeout: Optional[float] = None,
-                 max_retries: int = 2) -> None:
+    def __init__(
+        self,
+        model: str = "google/veo3",
+        api_key: Optional[str] = None,
+        base_url: str = "https://api.aimlapi.com/v1",
+        timeout: Optional[float] = None,
+        max_retries: int = 2,
+    ) -> None:
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
@@ -28,10 +35,20 @@ class AimlapiVideoGenerator:
     def _client(self) -> httpx.Client:
         return httpx.Client(timeout=self.timeout)
 
-    def generate(self, prompt: str, n: int = 1, response_format: str = "url") -> List[str]:
+    def generate(
+        self, prompt: str, n: int = 1, response_format: str = "url"
+    ) -> List[str]:
         client = self._client()
-        headers = {"Authorization": f"Bearer {self.api_key or os.getenv('AIMLAPI_API_KEY')}"}
-        payload = {"model": self.model, "prompt": prompt, "n": n, "response_format": response_format}
+        headers = {
+            **AIMLAPI_HEADERS,
+            "Authorization": f"Bearer {self.api_key or os.getenv('AIMLAPI_API_KEY')}",
+        }
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "n": n,
+            "response_format": response_format,
+        }
         url = f"{self.base_url}/videos/generations"
         for _ in range(self.max_retries + 1):
             resp = client.post(url, json=payload, headers=headers)
