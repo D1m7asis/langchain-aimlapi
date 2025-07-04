@@ -52,13 +52,3 @@ from langchain_aimlapi import AimlapiVideoGenerator
 video_gen = AimlapiVideoGenerator()
 video_gen.generate("a dancing robot")
 ```
-
-## LLMs
-`AimlapiLLM` class exposes LLMs from Aimlapi.
-
-```python
-from langchain_aimlapi import AimlapiLLM
-
-llm = AimlapiLLM()
-llm.invoke("The meaning of life is")
-```
