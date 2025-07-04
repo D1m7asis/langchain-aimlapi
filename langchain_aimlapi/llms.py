@@ -16,8 +16,7 @@ from langchain_core.callbacks import (
 from langchain_core.language_models.llms import LLM
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import Generation, LLMResult
-from openai import OpenAIError
-from openai.error import APIConnectionError
+from openai import OpenAIError, APIConnectionError
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
