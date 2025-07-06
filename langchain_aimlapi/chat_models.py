@@ -11,7 +11,7 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import BaseChatOpenAI
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
@@ -36,7 +36,7 @@ from langchain_aimlapi.constants import AIMLAPI_HEADERS
 logger = logging.getLogger(__name__)
 
 
-class ChatAimlapi(BaseChatModel):
+class ChatAimlapi(BaseChatOpenAI):
     """Wrapper for the OpenAI-compatible Aimlapi chat completion API.
 
     The class supports local fallback behavior when ``AIMLAPI_API_KEY`` is not
