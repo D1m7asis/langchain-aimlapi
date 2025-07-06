@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
 from typing import Any, Dict, Iterator, List, Optional
 
 import openai
-from openai import OpenAIError
 from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
@@ -16,6 +16,7 @@ from langchain_core.callbacks import (
 from langchain_core.language_models.llms import LLM
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import Generation, GenerationChunk, LLMResult
+from openai import APIConnectionError, OpenAIError
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
@@ -24,7 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 class AimlapiLLM(LLM):
-    """Wrapper for the OpenAI-compatible Aimlapi completion API."""
+    """Wrapper for the OpenAI-compatible Aimlapi completion API.
+
+    Additional options can be supplied via ``model_kwargs`` with conflicting
+    keys removed automatically. Requests are retried with exponential backoff
+    and the model falls back to parroting when no API key is provided.
+    """
 
     model_name: str = Field(alias="model")
     temperature: Optional[float] = None
@@ -53,20 +59,43 @@ class AimlapiLLM(LLM):
             default_headers=AIMLAPI_HEADERS,
         )
 
+    def _filter_model_kwargs(self) -> Dict[str, Any]:
+        """Remove keys that collide with explicit parameters."""
+        return {
+            k: v
+            for k, v in self.model_kwargs.items()
+            if k not in {"model", "temperature", "max_tokens", "stop"}
+        }
+
     def _execute_with_retry(self, fn, *args, **kwargs):
+        """Synchronously run ``fn`` with retry logic."""
+        return self._execute_with_retry_sync(fn, *args, **kwargs)
+
+    def _execute_with_retry_sync(self, fn, *args, **kwargs):
         """Execute a client call with retries and exponential backoff."""
         last_err = None
         for attempt in range(self.max_retries + 1):
             try:
                 return fn(*args, **kwargs)
-            except (OpenAIError, TimeoutError) as err:  # noqa: PERF203
+            except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
                 last_err = err
-                backoff = 2**attempt
-                logger.warning(
-                    "AimlapiLLM error on attempt %s: %s", attempt + 1, err
-                )
+                backoff = min(2**attempt, 8)
+                logger.warning("AimlapiLLM error on attempt %s: %s", attempt + 1, err)
                 time.sleep(backoff)
         raise last_err  # type: ignore[misc]
+
+    async def _execute_with_retry_async(self, fn, *args, **kwargs):
+        """Async version of :meth:`_execute_with_retry_sync`."""
+        last_err = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return await fn(*args, **kwargs)
+            except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
+                last_err = err
+                backoff = min(2**attempt, 8)
+                logger.warning("AimlapiLLM error on attempt %s: %s", attempt + 1, err)
+                await asyncio.sleep(backoff)
+        raise last_err
 
     def _call(
         self,
@@ -78,18 +107,21 @@ class AimlapiLLM(LLM):
         client = self._client()
         if client is None:
             text = prompt[: self.parrot_buffer_length or 50]
-            message = AIMessage(content=text)
-            return LLMResult(generations=[[Generation(message=message)]])
+            # fallback to parroting the prompt
+            generation = Generation(text=text)
+            return LLMResult(generations=[[generation]])
+        # prepare parameters for single completion request
         params = {
             "model": self.model_name,
             "prompt": prompt,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "stop": stop,
-            **self.model_kwargs,
-            **kwargs,
+            "stop": stop if isinstance(stop, list) else [stop] if stop else None,
         }
-        response = self._execute_with_retry(client.completions.create, **params)
+        params.update(self._filter_model_kwargs())
+        params.update(kwargs)
+        # issue request with retry
+        response = self._execute_with_retry_sync(client.completions.create, **params)
         choice = response.choices[0]
         usage = response.usage
         message = AIMessage(
@@ -104,7 +136,9 @@ class AimlapiLLM(LLM):
                 "finish_reason": choice.finish_reason,
             },
         )
-        generation = Generation(message=message)
+        generation = Generation(
+            text=choice.text or "", generation_info={"message": message}
+        )
         return LLMResult(generations=[[generation]])
 
     async def _acall(
@@ -117,18 +151,22 @@ class AimlapiLLM(LLM):
         client = self._client()
         if client is None:
             text = prompt[: self.parrot_buffer_length or 50]
-            message = AIMessage(content=text)
-            return LLMResult(generations=[[Generation(message=message)]])
+            generation = Generation(text=text)
+            return LLMResult(generations=[[generation]])
+        # prepare parameters for async completion request
         params = {
             "model": self.model_name,
             "prompt": prompt,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "stop": stop,
-            **self.model_kwargs,
-            **kwargs,
+            "stop": stop if isinstance(stop, list) else [stop] if stop else None,
         }
-        response = await self._execute_with_retry(client.completions.create, **params)  # type: ignore[call-arg]
+        params.update(self._filter_model_kwargs())
+        params.update(kwargs)
+        # issue async request with retry
+        response = await self._execute_with_retry_async(  # type: ignore[call-arg]
+            client.completions.create, **params
+        )
         choice = response.choices[0]
         usage = response.usage
         message = AIMessage(
@@ -143,5 +181,7 @@ class AimlapiLLM(LLM):
                 "finish_reason": choice.finish_reason,
             },
         )
-        generation = Generation(message=message)
+        generation = Generation(
+            text=choice.text or "", generation_info={"message": message}
+        )
         return LLMResult(generations=[[generation]])

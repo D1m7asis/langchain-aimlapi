@@ -1,27 +1,28 @@
 """Aimlapi chat models."""
 
+"""Chat model integration for Aimlapi."""
+
+import asyncio
+import json
 import logging
 import os
 import time
-import json
 from typing import Any, Dict, Iterator, List, Optional, Type
 
 import openai
-from openai import OpenAIError
-from langchain_core.callbacks import (
-    CallbackManagerForLLMRun,
-)
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
     BaseMessage,
 )
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.messages.ai import UsageMetadata, subtract_usage
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda, RunnableMap
 from langchain_core.utils.function_calling import convert_to_json_schema
-from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
+from openai import APIConnectionError, OpenAIError
 from pydantic import BaseModel, Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
@@ -32,9 +33,10 @@ logger = logging.getLogger(__name__)
 class ChatAimlapi(BaseChatModel):
     """Wrapper for the OpenAI-compatible Aimlapi chat completion API.
 
-    The class supports local fallback behavior when ``AIMLAPI_API_KEY`` is not
-    provided. In this mode the model simply echoes the last user message and is
-    used to run the unit tests without network access.
+    ``model_kwargs`` can be used to pass additional parameters to the
+    underlying API. Conflicting keys are filtered out. The class retries failed
+    requests with exponential backoff and falls back to a local "parrot" mode
+    when no API key is configured.
     """
 
     model_name: str = Field(alias="model")
@@ -51,17 +53,34 @@ class ChatAimlapi(BaseChatModel):
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
 
     def _execute_with_retry(self, fn, *args, **kwargs):
+        """Synchronously run ``fn`` with retry and exponential backoff."""
+        return self._execute_with_retry_sync(fn, *args, **kwargs)
+
+    def _execute_with_retry_sync(self, fn, *args, **kwargs):
         """Run ``fn`` with retries and exponential backoff on API errors."""
         last_err = None
         for attempt in range(self.max_retries + 1):
             try:
                 return fn(*args, **kwargs)
-            except (OpenAIError, TimeoutError) as err:  # noqa: PERF203
+            except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
                 last_err = err
-                backoff = 2**attempt
+                backoff = min(2**attempt, 8)
                 logger.warning("Aimlapi request failed: %s", err)
                 time.sleep(backoff)
         raise last_err  # type: ignore[misc]
+
+    async def _execute_with_retry_async(self, fn, *args, **kwargs):
+        """Async version of :meth:`_execute_with_retry_sync`."""
+        last_err = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return await fn(*args, **kwargs)
+            except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
+                last_err = err
+                backoff = min(2**attempt, 8)
+                logger.warning("Aimlapi request failed: %s", err)
+                await asyncio.sleep(backoff)
+        raise last_err
 
     def with_structured_output(
         self, schema: Type[BaseModel], *, include_raw: bool = False, **_: Any
@@ -127,6 +146,14 @@ class ChatAimlapi(BaseChatModel):
             default_headers=AIMLAPI_HEADERS,
         )
 
+    def _filter_model_kwargs(self) -> Dict[str, Any]:
+        """Remove keys that collide with explicit parameters."""
+        return {
+            k: v
+            for k, v in self.model_kwargs.items()
+            if k not in {"model", "temperature", "max_tokens", "stop"}
+        }
+
     @staticmethod
     def _convert_messages(messages: List[BaseMessage]) -> List[dict]:
         role_map = {
@@ -168,15 +195,19 @@ class ChatAimlapi(BaseChatModel):
             )
             return ChatResult(generations=[ChatGeneration(message=message)])
 
-        response = self._execute_with_retry(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            **self.model_kwargs,
-            **kwargs,
+        params = {
+            "model": self.model_name,
+            "messages": self._convert_messages(messages),
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stop": stop if isinstance(stop, list) else [stop] if stop else None,
+        }
+        # merge additional parameters after filtering collisions
+        params.update(self._filter_model_kwargs())
+        params.update(kwargs)
+        # make the API call with retry logic
+        response = self._execute_with_retry_sync(
+            client.chat.completions.create, **params
         )
 
         choice = response.choices[0].message
@@ -229,17 +260,19 @@ class ChatAimlapi(BaseChatModel):
                 yield gen_chunk
             return
 
-        stream = self._execute_with_retry(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            stream=True,
-            **self.model_kwargs,
-            **kwargs,
-        )
+        # prepare parameters for streaming request
+        params = {
+            "model": self.model_name,
+            "messages": self._convert_messages(messages),
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stop": stop if isinstance(stop, list) else [stop] if stop else None,
+            "stream": True,
+        }
+        params.update(self._filter_model_kwargs())
+        params.update(kwargs)
+        # obtain the stream with retry logic
+        stream = self._execute_with_retry_sync(client.chat.completions.create, **params)
         prev_usage = None
         for chunk in stream:
             token = chunk.choices[0].delta.content or ""
@@ -251,7 +284,9 @@ class ChatAimlapi(BaseChatModel):
                     total_tokens=chunk.usage.total_tokens,
                 )
                 # compute usage difference since last chunk
-                usage_delta = subtract_usage(current, prev_usage) if prev_usage else current
+                usage_delta = (
+                    subtract_usage(current, prev_usage) if prev_usage else current
+                )
                 prev_usage = current
             resp_meta = {
                 "model_name": self.model_name,
