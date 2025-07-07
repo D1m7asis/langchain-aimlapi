@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, List, Optional, Literal
+from typing import Any, List, Literal, Optional
 
 import openai
 from langchain_core.callbacks import CallbackManagerForLLMRun

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, List, Optional, Literal
+from typing import Any, List, Literal, Optional
 
 import httpx
-from pydantic import Field
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import LLM
+from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
 
@@ -180,7 +180,8 @@ class AimlapiVideoModel(LLM):
                     elif isinstance(video_data, list):
                         video_items = video_data
                     elif isinstance(video_data, str):
-                        video_items = [video_data]
+                        key = "url" if response_format == "url" else "b64_json"
+                        video_items = [{key: video_data}]
                     else:
                         raise RuntimeError(
                             f"Unexpected type for video_data: {type(video_data)}"
@@ -200,7 +201,8 @@ class AimlapiVideoModel(LLM):
                                 urls.append(item)
                             else:
                                 raise RuntimeError(
-                                    f"Video item #{idx} has no URL or wrong type: {item}"
+                                    f"Video item #{idx} has no URL "
+                                    f"or wrong type: {item}"
                                 )
                         return urls
 
@@ -217,7 +219,8 @@ class AimlapiVideoModel(LLM):
                             b64_results.append(item)
                         else:
                             raise RuntimeError(
-                                f"Video item #{idx} missing 'b64_json' or wrong type: {item}"
+                                f"Video item #{idx} missing "
+                                f"'b64_json' or wrong type: {item}"
                             )
                     return b64_results
 

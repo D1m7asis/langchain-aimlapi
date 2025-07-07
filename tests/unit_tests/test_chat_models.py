@@ -2,8 +2,9 @@
 
 from typing import Type
 
-from langchain_aimlapi.chat_models import ChatAimlapi
 from langchain_tests.unit_tests import ChatModelUnitTests
+
+from langchain_aimlapi.chat_models import ChatAimlapi
 
 
 class TestChatAimlapiUnit(ChatModelUnitTests):

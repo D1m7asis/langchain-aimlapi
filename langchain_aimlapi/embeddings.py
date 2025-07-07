@@ -23,8 +23,8 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    SecretStr,
     PrivateAttr,
+    SecretStr,
     model_validator,
 )
 from typing_extensions import Self
@@ -35,7 +35,7 @@ from .constants import AIMLAPI_HEADERS
 logger = logging.getLogger(__name__)
 
 
-# OpenAI-compatible Embeddings model: implements LangChain Embeddings API over an OpenAI-like interface
+# Implements LangChain Embeddings API over an OpenAI-like interface
 class AimlapiEmbeddings(BaseModel, Embeddings):
     """
     AI/ML API embedding model integration for generating vector embeddings from text.
@@ -46,7 +46,7 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
 
     Attributes:
         client: Sync API client for embedding requests (excluded from serialization).
-        async_client: Async API client for embedding requests (excluded from serialization).
+        async_client: Async API client for embedding requests (serialization excluded).
         model: Name of the embedding model to use.
         _use_mock: Flag to indicate mock mode (no real API calls).
         dimensions: Optional override for embedding vector size.
@@ -168,7 +168,7 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
         # Sync client
         if not self.client:
             sync_opts = {"http_client": self.http_client} if self.http_client else {}
-            self.client = openai.OpenAI(**params, **sync_opts).embeddings
+            self.client = openai.OpenAI(**params, **sync_opts).embeddings  # type: ignore[arg-type]
 
         # Async client
         if not self.async_client:
@@ -177,7 +177,7 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
                 if self.http_async_client
                 else {}
             )
-            self.async_client = openai.AsyncOpenAI(**params, **async_opts).embeddings
+            self.async_client = openai.AsyncOpenAI(**params, **async_opts).embeddings  # type: ignore[arg-type]
 
         return self
 

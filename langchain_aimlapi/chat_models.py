@@ -2,31 +2,29 @@
 
 from __future__ import annotations
 
-import os
 import hashlib
 from typing import (
     Any,
+    AsyncIterator,
     Dict,
+    Iterator,
     List,
     Optional,
     Sequence,
-    Iterable,
-    AsyncIterable,
 )
 
 import openai
-from pydantic import ConfigDict, Field, SecretStr, PrivateAttr, model_validator
-from typing_extensions import Self
-
-from langchain_core.language_models.chat_models import LangSmithParams, BaseChatModel
+from langchain_core.callbacks import (
+    AsyncCallbackManagerForLLMRun,
+    CallbackManagerForLLMRun,
+)
+from langchain_core.language_models.chat_models import BaseChatModel, LangSmithParams
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.callbacks import (
-    CallbackManagerForLLMRun,
-    AsyncCallbackManagerForLLMRun,
-)
 from langchain_core.utils import from_env, secret_from_env
 from langchain_openai.chat_models.base import BaseChatOpenAI
+from pydantic import ConfigDict, Field, PrivateAttr, SecretStr, model_validator
+from typing_extensions import Self
 
 from .constants import AIMLAPI_HEADERS
 
@@ -107,8 +105,8 @@ class ChatAimlapi(BaseChatOpenAI):
         return params
 
     # Inherit tool binding and structured output handling from BaseChatModel
-    bind_tools = BaseChatModel.bind_tools
-    with_structured_output = BaseChatModel.with_structured_output
+    bind_tools = BaseChatModel.bind_tools  # type: ignore[assignment]
+    with_structured_output = BaseChatModel.with_structured_output  # type: ignore[assignment]
 
     # -------------------------------------------------------------------------
     # Environment validation and client initialization
@@ -171,7 +169,7 @@ class ChatAimlapi(BaseChatOpenAI):
     def _fake_answer(self, messages: Sequence[BaseMessage]) -> str:
         """
         Generate a deterministic mock response based on message contents.
-        Uses SHA-1 to hash concatenated messages, returns first 8 hex digits.
+        Returns an AIMessage with or without tool_calls depending on input.
         """
         text = " ".join(getattr(m, "content", "") for m in messages)
         digest = hashlib.sha1(text.encode()).hexdigest()
@@ -206,11 +204,11 @@ class ChatAimlapi(BaseChatOpenAI):
 
     def _stream(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
-    ) -> Iterable[ChatGenerationChunk]:
+    ) -> Iterator[ChatGenerationChunk]:
         """
         Synchronous streaming chat completion:
         - If mock mode is on, yield chunks of the fake answer.
@@ -228,11 +226,13 @@ class ChatAimlapi(BaseChatOpenAI):
 
     async def _astream(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+        *,
+        stream_usage: Optional[bool] = None,
         **kwargs: Any,
-    ) -> AsyncIterable[ChatGenerationChunk]:
+    ) -> AsyncIterator[ChatGenerationChunk]:
         """
         Asynchronous streaming chat completion, analogous to _stream().
         """
@@ -242,7 +242,11 @@ class ChatAimlapi(BaseChatOpenAI):
                 yield ChatGenerationChunk(message=AIMessageChunk(content=token))
             return
         async for chunk in super()._astream(
-            messages, stop=stop, run_manager=run_manager, **kwargs
+            messages,
+            stop=stop,
+            run_manager=run_manager,
+            stream_usage=stream_usage,
+            **kwargs,
         ):
             yield chunk
 

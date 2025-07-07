@@ -2,8 +2,9 @@
 
 from typing import Type
 
-from langchain_aimlapi.embeddings import AimlapiEmbeddings
 from langchain_tests.integration_tests import EmbeddingsIntegrationTests
+
+from langchain_aimlapi.embeddings import AimlapiEmbeddings
 
 
 class TestParrotLinkEmbeddingsIntegration(EmbeddingsIntegrationTests):
