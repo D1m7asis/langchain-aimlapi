@@ -2,56 +2,46 @@ from __future__ import annotations
 
 import os
 import time
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
 import httpx
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
-from langchain_core.language_models.llms import LLM
 
 
 class AimlapiVideoModel(LLM):
     """Generate videos using the Aimlapi service."""
 
-    def _call(self, prompt: str, stop: Optional[list[str]] = None,
-              run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
-        pass
+    model: str = Field(default="google/veo3")
+    provider: str = Field(default="google")
+    api_key: Optional[str] = Field(default=None, alias="api_key")
+    base_url: str = Field(default="https://api.aimlapi.com/v2", alias="base_url")
+    timeout: Optional[float] = Field(default=None, alias="timeout")
+    max_retries: int = Field(default=2, alias="max_retries")
+
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        videos = self.generate_videos(prompt=prompt, n=1, **kwargs)
+        return videos[0]
 
     @property
     def _llm_type(self) -> str:
-        pass
-
-    model: str = Field(default="google/veo3")
-    provider: str = Field(default="google")
-    api_key: Optional[str] = None
-    base_url: str = "https://api.aimlapi.com/v2"
-    timeout: Optional[float] = None
-    max_retries: int = 2
-
-    def __init__(
-        self,
-        model: str = "google/veo3",
-        provider: str = "google",
-        api_key: Optional[str] = None,
-        base_url: str = "https://api.aimlapi.com/v2",
-        timeout: Optional[float] = None,
-        max_retries: int = 2,
-    ) -> None:
-        self.model = model
-        self.provider = provider
-        self.api_key = api_key
-        self.base_url = base_url
-        self.timeout = timeout
-        self.max_retries = max_retries
+        return "aimlapi-video"
 
     def _client(self) -> httpx.Client:
         """Create a reusable HTTP client with basic retry logic."""
         transport = httpx.HTTPTransport(retries=self.max_retries)
         return httpx.Client(timeout=self.timeout, transport=transport)
 
-    def generate(
+    def generate_videos(
             self,
             prompt: str,
             n: int = 1,

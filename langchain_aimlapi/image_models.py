@@ -1,46 +1,38 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
 import openai
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models.llms import LLM
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
-from langchain_core.language_models.llms import LLM
 
 
 class AimlapiImageModel(LLM):
     """Generate images using the Aimlapi service."""
 
-    def _call(self, prompt: str, stop: Optional[list[str]] = None,
-              run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
-        pass
+    model: str = Field(default="dall-e-3")
+    api_key: Optional[str] = Field(default=None, alias="api_key")
+    base_url: str = Field(default="https://api.aimlapi.com/v1", alias="base_url")
+    timeout: Optional[float] = Field(default=None, alias="timeout")
+    max_retries: int = Field(default=2, alias="max_retries")
+
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        images = self.generate_images(prompt=prompt, n=1, **kwargs)
+        return images[0]
 
     @property
     def _llm_type(self) -> str:
-        pass
-
-    model: str = Field(default="dall-e-3")
-    api_key: Optional[str] = None
-    base_url: str = "https://api.aimlapi.com/v1"
-    timeout: Optional[float] = None
-    max_retries: int = 2
-
-    def __init__(
-        self,
-        model: str = "dall-e-3",
-        api_key: Optional[str] = None,
-        base_url: str = "https://api.aimlapi.com/v1",
-        timeout: Optional[float] = None,
-        max_retries: int = 2,
-    ) -> None:
-        self.model = model
-        self.api_key = api_key
-        self.base_url = base_url
-        self.timeout = timeout
-        self.max_retries = max_retries
+        return "aimlapi-image"
 
     def _client(self) -> openai.OpenAI:
         return openai.OpenAI(
@@ -51,7 +43,7 @@ class AimlapiImageModel(LLM):
             default_headers=AIMLAPI_HEADERS,
         )
 
-    def generate(
+    def generate_images(
         self,
         prompt: str,
         n: int = 1,
