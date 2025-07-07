@@ -28,5 +28,3 @@ Available components:
 Each component mirrors the corresponding OpenAI class so you can switch from the
 OpenAI provider to Aimlapi with minimal code changes. See the following pages
 for concrete examples of each class in action.
-
-See the following pages for usage examples of each class.

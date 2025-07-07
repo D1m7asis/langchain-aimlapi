@@ -46,3 +46,31 @@ from langchain_aimlapi import AimlapiLLM
 llm = AimlapiLLM()
 llm.invoke("The meaning of life is")
 ```
+
+## Image Generation
+
+`AimlapiImageModel` generates images from prompts.
+
+```python
+from langchain_aimlapi import AimlapiImageModel
+
+img = AimlapiImageModel(
+    model="stable-diffusion-v3-medium",
+    size="512x512",
+    n=1,
+)
+img.invoke("A serene mountain lake at sunset")
+```
+
+## Video Generation
+
+`AimlapiVideoModel` generates short videos from prompts.
+
+```python
+from langchain_aimlapi import AimlapiVideoModel
+
+vid = AimlapiVideoModel(
+    model="veo2",
+)
+vid.invoke("A timelapse of city lights at night")
+```
