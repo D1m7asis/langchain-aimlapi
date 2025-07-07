@@ -22,6 +22,7 @@ disallow_untyped_defs = "True"
 python = ">=3.9,<4.0"
 langchain-core = "^0.3.15"
 openai = "^1.0"
+langchain-openai = "^0.3.27"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
