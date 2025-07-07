@@ -25,8 +25,7 @@ from langchain_core.language_models.llms import LLM
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import Generation, LLMResult
 from langchain_core.utils import secret_from_env
-from openai import OpenAIError
-from openai.error import APIConnectionError
+from openai import OpenAIError, APIConnectionError
 from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 

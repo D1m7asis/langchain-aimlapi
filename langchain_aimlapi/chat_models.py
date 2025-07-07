@@ -19,7 +19,6 @@ Instantiate::
 import asyncio
 import json
 import logging
-import os
 import time
 from typing import Any, Dict, Iterator, List, Optional, Type
 
@@ -46,8 +45,7 @@ from langchain_core.runnables import Runnable, RunnableLambda, RunnableMap
 from langchain_core.utils import secret_from_env
 from langchain_core.utils.function_calling import convert_to_json_schema
 from langchain_openai.chat_models.base import BaseChatOpenAI
-from openai import OpenAIError
-from openai.error import APIConnectionError
+from openai import OpenAIError, APIConnectionError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
 
