@@ -6,7 +6,7 @@ build-backend = "poetry.core.masonry.api"
 name = "langchain-aimlapi"
 version = "0.1.0"
 description = "An integration package connecting Aimlapi and LangChain"
-authors = []
+authors = ["Dmitry Tumanov <d1m7asis@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/langchain-ai/langchain"
 license = "MIT"
@@ -21,6 +21,9 @@ disallow_untyped_defs = "True"
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
 langchain-core = "^0.3.15"
+langchain-openai = "^0.3"
+requests = "^2"
+aiohttp = "^3.9.1"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]
