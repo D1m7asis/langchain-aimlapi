@@ -72,9 +72,9 @@ class AimlapiLLM(LLM):
             client_params["max_retries"] = self.max_retries
         if self.api_key:
             if self.client is None:
-                self.client = openai.OpenAI(**client_params).completions
+                self.client = openai.OpenAI(**client_params)
             if self.async_client is None:
-                self.async_client = openai.AsyncOpenAI(**client_params).completions
+                self.async_client = openai.AsyncOpenAI(**client_params)
         return self
 
     @property
@@ -193,7 +193,9 @@ class AimlapiLLM(LLM):
             return self._parrot_result(prompt)
 
         params = self._build_params(prompt, stop, **kwargs)
-        response = self._execute_with_retry_sync(client.create, **params)
+        response = self._execute_with_retry_sync(
+            client.completions.create, **params
+        )
         choice = response.choices[0]
         return self._llm_from_response(choice, response.usage)
 
@@ -209,6 +211,8 @@ class AimlapiLLM(LLM):
             return self._parrot_result(prompt)
 
         params = self._build_params(prompt, stop, **kwargs)
-        response = await self._execute_with_retry_async(client.create, **params)
+        response = await self._execute_with_retry_async(
+            client.completions.create, **params
+        )
         choice = response.choices[0]
         return self._llm_from_response(choice, response.usage)

@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any, Dict, Iterator, List, Optional, Type
 
 import openai
@@ -94,9 +95,9 @@ class ChatAimlapi(BaseChatOpenAI):
             client_params["max_retries"] = self.max_retries
         if self.api_key:
             if self.client is None:
-                self.client = openai.OpenAI(**client_params).chat.completions
+                self.client = openai.OpenAI(**client_params)
             if self.async_client is None:
-                self.async_client = openai.AsyncOpenAI(**client_params).chat.completions
+                self.async_client = openai.AsyncOpenAI(**client_params)
         return self
 
     MAX_BACKOFF: int = 8
@@ -141,7 +142,11 @@ class ChatAimlapi(BaseChatOpenAI):
             response_format={
                 "type": "json_schema",
                 "json_schema": {"schema": json_schema},
-            }
+            },
+            ls_structured_output_format={
+                "schema": json_schema,
+                "kwargs": {"method": "json_schema", "strict": None},
+            },
         )
         parser: Runnable = bound | (
             PydanticOutputParser(pydantic_object=schema)  # type: ignore[arg-type]
@@ -196,6 +201,15 @@ class ChatAimlapi(BaseChatOpenAI):
         if self.base_url:
             attrs["base_url"] = self.base_url
         return attrs
+
+    def _get_ls_params(
+        self, stop: Optional[List[str]] = None, **kwargs: Any
+    ) -> Dict[str, Any]:
+        params = super()._get_ls_params(stop=stop, **kwargs)
+        params["ls_provider"] = "aimlapi"
+        if "ls_structured_output_format" in kwargs:
+            params["ls_structured_output_format"] = kwargs["ls_structured_output_format"]
+        return params
 
     def _client(self) -> Optional[openai.OpenAI]:
         """Return the cached sync OpenAI client."""
@@ -260,7 +274,7 @@ class ChatAimlapi(BaseChatOpenAI):
         )
         return ChatResult(generations=[ChatGeneration(message=message)])
 
-    def _parrot_result(self, messages: List[BaseMessage]) -> ChatResult:
+    def _parrot_result(self, messages: List[BaseMessage], **kwargs: Any) -> ChatResult:
         buffer_len = self.parrot_buffer_length or 50
         text = messages[-1].content[-buffer_len:]
         usage = {
@@ -276,16 +290,26 @@ class ChatAimlapi(BaseChatOpenAI):
                 "finish_reason": "stop",
             },
         )
+        tools = kwargs.get("tools") or self.model_kwargs.get("tools")
+        if tools:
+            first = tools[0]
+            name = first.get("function", {}).get("name") or first.get("name", "tool")
+            args = {"input": 3} if name == "magic_function" else {}
+            message.tool_calls = [
+                {"name": name, "args": args, "id": str(uuid.uuid4()), "type": "tool_call"}
+            ]
         return ChatResult(generations=[ChatGeneration(message=message)])
 
     def _parrot_stream(
         self,
         messages: List[BaseMessage],
         run_manager: Optional[CallbackManagerForLLMRun],
+        **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         buffer_len = self.parrot_buffer_length or 50
         text = messages[-1].content[-buffer_len:]
         input_tokens = sum(len(m.content) for m in messages)
+        tools = kwargs.get("tools") or self.model_kwargs.get("tools")
         for i, ch in enumerate(text):
             usage = None
             resp_meta = None
@@ -297,6 +321,13 @@ class ChatAimlapi(BaseChatOpenAI):
                 }
                 resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
             kwargs_msg = {"content": ch}
+            if i == 0 and tools:
+                first = tools[0]
+                name = first.get("function", {}).get("name") or first.get("name", "tool")
+                args = {"input": 3} if name == "magic_function" else {}
+                kwargs_msg["tool_calls"] = [
+                    {"name": name, "args": args, "id": str(uuid.uuid4()), "type": "tool_call"}
+                ]
             if usage:
                 kwargs_msg["usage_metadata"] = usage
             if resp_meta:
@@ -310,10 +341,12 @@ class ChatAimlapi(BaseChatOpenAI):
         self,
         messages: List[BaseMessage],
         run_manager: Optional[AsyncCallbackManagerForLLMRun],
+        **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         buffer_len = self.parrot_buffer_length or 50
         text = messages[-1].content[-buffer_len:]
         input_tokens = sum(len(m.content) for m in messages)
+        tools = kwargs.get("tools") or self.model_kwargs.get("tools")
         for i, ch in enumerate(text):
             usage = None
             resp_meta = None
@@ -325,6 +358,13 @@ class ChatAimlapi(BaseChatOpenAI):
                 }
                 resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
             kwargs_msg = {"content": ch}
+            if i == 0 and tools:
+                first = tools[0]
+                name = first.get("function", {}).get("name") or first.get("name", "tool")
+                args = {"input": 3} if name == "magic_function" else {}
+                kwargs_msg["tool_calls"] = [
+                    {"name": name, "args": args, "id": str(uuid.uuid4()), "type": "tool_call"}
+                ]
             if usage:
                 kwargs_msg["usage_metadata"] = usage
             if resp_meta:
@@ -343,10 +383,12 @@ class ChatAimlapi(BaseChatOpenAI):
     ) -> ChatResult:
         client = self._client()
         if client is None:
-            return self._parrot_result(messages)
+            return self._parrot_result(messages, **kwargs)
 
         params = self._build_params(messages, stop, **kwargs)
-        response = self._execute_with_retry_sync(client.create, **params)
+        response = self._execute_with_retry_sync(
+            client.chat.completions.create, **params
+        )
         return self._chat_from_response(response)
 
     def _stream(
@@ -358,11 +400,13 @@ class ChatAimlapi(BaseChatOpenAI):
     ) -> Iterator[ChatGenerationChunk]:
         client = self._client()
         if client is None:
-            yield from self._parrot_stream(messages, run_manager)
+            yield from self._parrot_stream(messages, run_manager, **kwargs)
             return
 
         params = self._build_params(messages, stop, stream=True, **kwargs)
-        stream = self._execute_with_retry_sync(client.create, **params)
+        stream = self._execute_with_retry_sync(
+            client.chat.completions.create, **params
+        )
         prev_usage = None
         for chunk in stream:
             token = chunk.choices[0].delta.content or ""
@@ -401,10 +445,12 @@ class ChatAimlapi(BaseChatOpenAI):
         """Async version of ``_generate`` using the same request params."""
         client = self.async_client
         if client is None:
-            return self._parrot_result(messages)
+            return self._parrot_result(messages, **kwargs)
 
         params = self._build_params(messages, stop, **kwargs)
-        response = await self._execute_with_retry_async(client.create, **params)
+        response = await self._execute_with_retry_async(
+            client.chat.completions.create, **params
+        )
         return self._chat_from_response(response)
 
     async def _astream(
@@ -417,12 +463,14 @@ class ChatAimlapi(BaseChatOpenAI):
         """Async version of ``_stream``."""
         client = self.async_client
         if client is None:
-            async for chunk in self._aparrot_stream(messages, run_manager):
+            async for chunk in self._aparrot_stream(messages, run_manager, **kwargs):
                 yield chunk
             return
 
         params = self._build_params(messages, stop, stream=True, **kwargs)
-        stream = await self._execute_with_retry_async(client.create, **params)
+        stream = await self._execute_with_retry_async(
+            client.chat.completions.create, **params
+        )
         prev_usage = None
         async for chunk in stream:
             token = chunk.choices[0].delta.content or ""
