@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Any
 
 import openai
+from langchain_core.callbacks import CallbackManagerForLLMRun
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
+from langchain_core.language_models.llms import LLM
 
 
-class AimlapiImageModel:
+class AimlapiImageModel(LLM):
     """Generate images using the Aimlapi service."""
+
+    def _call(self, prompt: str, stop: Optional[list[str]] = None,
+              run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
+        pass
+
+    @property
+    def _llm_type(self) -> str:
+        pass
 
     model: str = Field(default="dall-e-3")
     api_key: Optional[str] = None
