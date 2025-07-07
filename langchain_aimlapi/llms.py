@@ -14,6 +14,8 @@ from langchain_core.language_models.llms import LLM
 from langchain_core.utils import secret_from_env
 from pydantic import ConfigDict, Field, SecretStr, model_validator
 
+from .constants import AIMLAPI_HEADERS
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,6 +80,7 @@ class AimlapiLLM(LLM):
         headers = {
             "Authorization": f"Bearer {self.aimlapi_api_key.get_secret_value()}",
             "Content-Type": "application/json",
+            **AIMLAPI_HEADERS,
         }
         stop_to_use = stop[0] if stop and len(stop) == 1 else stop
         payload: Dict[str, Any] = {
@@ -111,6 +114,7 @@ class AimlapiLLM(LLM):
         headers = {
             "Authorization": f"Bearer {self.aimlapi_api_key.get_secret_value()}",
             "Content-Type": "application/json",
+            **AIMLAPI_HEADERS,
         }
         stop_to_use = stop[0] if stop and len(stop) == 1 else stop
         payload: Dict[str, Any] = {

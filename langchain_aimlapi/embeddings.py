@@ -8,7 +8,16 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Set, T
 import openai
 from langchain_core.embeddings import Embeddings
 from langchain_core.utils import from_env, get_pydantic_field_names, secret_from_env
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, PrivateAttr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    PrivateAttr,
+    model_validator,
+)
+
+from .constants import AIMLAPI_HEADERS
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -43,7 +52,9 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
     show_progress_bar: bool = False
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
     skip_empty: bool = False
-    default_headers: Union[Mapping[str, str], None] = None
+    default_headers: Union[Mapping[str, str], None] = Field(
+        default_factory=lambda: AIMLAPI_HEADERS.copy()
+    )
     default_query: Union[Mapping[str, object], None] = None
     http_client: Union[Any, None] = None
     http_async_client: Union[Any, None] = None

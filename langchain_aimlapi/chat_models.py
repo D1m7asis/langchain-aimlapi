@@ -1,6 +1,15 @@
 """Wrapper around AI/ML API chat completions."""
 
-from typing import Any, Dict, List, Optional, Sequence, Iterable, AsyncIterable
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Iterable,
+    AsyncIterable,
+    Mapping,
+)
 
 import hashlib
 import openai
@@ -17,6 +26,8 @@ from langchain_core.callbacks import (
 )
 from langchain_core.utils import from_env, secret_from_env
 from langchain_openai.chat_models.base import BaseChatOpenAI
+
+from .constants import AIMLAPI_HEADERS
 from pydantic import ConfigDict, Field, SecretStr, PrivateAttr, model_validator
 from typing_extensions import Self
 
@@ -57,6 +68,10 @@ class ChatAimlapi(BaseChatOpenAI):
     """Model name to use."""
 
     _use_mock: bool = PrivateAttr(default=False)
+
+    default_headers: Optional[Mapping[str, str]] = Field(
+        default_factory=lambda: AIMLAPI_HEADERS.copy()
+    )
 
     aimlapi_api_key: Optional[SecretStr] = Field(
         alias="api_key",
