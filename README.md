@@ -11,9 +11,22 @@ served with enterprise-grade rate limits and uptimes via
 pip install -U langchain-aimlapi
 ```
 
-And you should configure credentials by setting the following environment variable:
+Configure credentials by setting the environment variable:
 
 * `AIMLAPI_API_KEY` – your AI/ML API key
+
+## Available modules
+
+The package exports the following classes:
+
+* `ChatAimlapi` – chat completion model
+* `AimlapiLLM` – text completion model
+* `AimlapiEmbeddings` – embeddings
+* `AimlapiImageModel` – image generation
+* `AimlapiVideoModel` – video generation
+* `AIMLAPI_HEADERS` – default request headers
+
+All classes provide both synchronous and asynchronous APIs. See the `docs/` folder for complete examples.
 
 ## Chat Models
 

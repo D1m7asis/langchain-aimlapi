@@ -24,6 +24,7 @@ Available components:
 - `AimlapiEmbeddings` – embedding model.
 - `AimlapiImageModel` – image generation model.
 - `AimlapiVideoModel` – video generation model.
+- `AIMLAPI_HEADERS` – default request headers used for analytics.
 
 Each component mirrors the corresponding OpenAI class so you can switch from the
 OpenAI provider to Aimlapi with minimal code changes. See the following pages
