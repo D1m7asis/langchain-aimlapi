@@ -1,11 +1,17 @@
 # AimlapiVideoModel
 
-`AimlapiVideoModel` generates short video clips using Aimlapi.
+`AimlapiVideoModel` generates short video clips using Aimlapi. The class
+implements the same interface as other LangChain LLMs.
 
 ```python
 from langchain_aimlapi import AimlapiVideoModel
 
-video_model = AimlapiVideoModel(model="google/veo3")
-video_url = video_model.invoke("a cat surfing")
-print(video_url)
+vid = AimlapiVideoModel(
+    model="veo2",
+    api_key="YOUR_API_KEY",
+)
+md_vid = vid("A timelapse of city lights at night")
+print("Markdown Video →", md_vid)
 ```
+
+An asynchronous version is available via `agenerate_videos` or `ainvoke`.

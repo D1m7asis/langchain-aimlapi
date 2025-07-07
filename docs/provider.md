@@ -1,6 +1,9 @@
 # Aimlapi Integration
 
-The **langchain-aimlapi** package provides convenient wrappers for using [Aimlapi](https://api.aimlapi.com/) models with LangChain.
+The **langchain-aimlapi** package provides convenient wrappers for using
+[Aimlapi](https://api.aimlapi.com/) models with LangChain. Aimlapi hosts over
+300 models including Deepseek, Gemini and ChatGPT with enterprise-grade rate
+limits and uptime.
 
 Install the package with:
 
@@ -21,5 +24,9 @@ Available components:
 - `AimlapiEmbeddings` – embedding model.
 - `AimlapiImageModel` – image generation model.
 - `AimlapiVideoModel` – video generation model.
+
+Each component mirrors the corresponding OpenAI class so you can switch from the
+OpenAI provider to Aimlapi with minimal code changes. See the following pages
+for concrete examples of each class in action.
 
 See the following pages for usage examples of each class.

@@ -58,6 +58,16 @@ class AimlapiImageModel(LLM):
             default_headers=AIMLAPI_HEADERS,
         )
 
+    def _async_client(self) -> openai.AsyncOpenAI:
+        """Return an asynchronous OpenAI-compatible client."""
+        return openai.AsyncOpenAI(
+            api_key=self.api_key or os.getenv("AIMLAPI_API_KEY"),
+            base_url=self.base_url,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+            default_headers=AIMLAPI_HEADERS,
+        )
+
     def _call(
         self,
         prompt: str,
@@ -78,6 +88,17 @@ class AimlapiImageModel(LLM):
             URL of the generated image.
         """
         images = self.generate_images(prompt=prompt, n=1, **kwargs)
+        return images[0]
+
+    async def _acall(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Asynchronous version of :meth:`_call`."""
+        images = await self.agenerate_images(prompt=prompt, n=1, **kwargs)
         return images[0]
 
     def generate_images(
@@ -116,6 +137,36 @@ class AimlapiImageModel(LLM):
             size=size,
             response_format=response_format,
         )
+        if response_format == "url":
+            return [data.url for data in resp.data]
+        return [data.b64_json for data in resp.data]
+
+    async def agenerate_images(
+        self,
+        prompt: str,
+        n: int = 1,
+        size: Literal[
+            "auto",
+            "1024x1024",
+            "1536x1024",
+            "1024x1536",
+            "256x256",
+            "512x512",
+            "1792x1024",
+            "1024x1792",
+        ] = "1024x1024",
+        response_format: Literal["url", "b64_json"] = "url",
+    ) -> List[str]:
+        """Asynchronous counterpart to :meth:`generate_images`."""
+        client = self._async_client()
+        resp = await client.images.generate(
+            model=self.model,
+            prompt=prompt,
+            n=n,
+            size=size,
+            response_format=response_format,
+        )
+        await client.aclose()
         if response_format == "url":
             return [data.url for data in resp.data]
         return [data.b64_json for data in resp.data]

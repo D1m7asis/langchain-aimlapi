@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 from typing import Any, List, Optional, Literal
+import asyncio
 
 import httpx
 from pydantic import Field
@@ -87,6 +88,17 @@ class AimlapiVideoModel(LLM):
         videos = self.generate_videos(prompt=prompt, n=1, **kwargs)
         return videos[0]
 
+    async def _acall(
+        self,
+        prompt: str,
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Asynchronous version of :meth:`_call`."""
+        videos = await self.agenerate_videos(prompt=prompt, n=1, **kwargs)
+        return videos[0]
+
     # -------------------------------------------------------------------------
     # HTTP client setup
     # -------------------------------------------------------------------------
@@ -100,6 +112,11 @@ class AimlapiVideoModel(LLM):
         """
         transport = httpx.HTTPTransport(retries=self.max_retries)
         return httpx.Client(timeout=self.timeout, transport=transport)
+
+    def _async_client(self) -> httpx.AsyncClient:
+        """Asynchronous version of :meth:`_client`."""
+        transport = httpx.AsyncHTTPTransport(retries=self.max_retries)
+        return httpx.AsyncClient(timeout=self.timeout, transport=transport)
 
     # -------------------------------------------------------------------------
     # Video generation logic with polling
@@ -171,11 +188,14 @@ class AimlapiVideoModel(LLM):
                 status = status_data.get("status")
 
                 if status == "completed":
-                    # Generation succeeded: extract video data
+                    # Generation succeeded: extract video data; handle list or dict
                     video_data = status_data.get("video", [])
+                    if isinstance(video_data, list):
+                        if response_format == "url":
+                            return [item.get("url") for item in video_data]
+                        return video_data
                     if response_format == "url":
-                        return [video_data.get("url")]  # Return URLs list
-                    # Return base64 content
+                        return [video_data.get("url")]
                     return [video_data]
 
                 if status in ("failed", "error"):
@@ -191,3 +211,65 @@ class AimlapiVideoModel(LLM):
 
                 # Wait before next poll
                 time.sleep(poll_interval)
+
+    async def agenerate_videos(
+        self,
+        prompt: str,
+        n: int = 1,
+        response_format: Literal["url", "b64_json"] = "url",
+        poll_interval: float = 10.0,
+        timeout: float = 360.0,
+    ) -> List[str]:
+        """Asynchronous counterpart to :meth:`generate_videos`."""
+        headers = {
+            **AIMLAPI_HEADERS,
+            "Authorization": f"Bearer {self.api_key or os.getenv('AIMLAPI_API_KEY')}",
+        }
+
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "n": n,
+            "response_format": response_format,
+        }
+
+        generation_endpoint = f"{self.base_url}/generate/video/{self.provider}/generation"
+
+        async with self._async_client() as client:
+            init_resp = await client.post(generation_endpoint, json=payload, headers=headers)
+            init_resp.raise_for_status()
+            init_data = init_resp.json()
+
+            generation_id = init_data.get("id")
+            start_time = time.time()
+
+            while True:
+                status_resp = await client.get(
+                    generation_endpoint,
+                    params={"generation_id": generation_id},
+                    headers=headers,
+                )
+                status_resp.raise_for_status()
+                status_data = status_resp.json()
+                status = status_data.get("status")
+
+                if status == "completed":
+                    video_data = status_data.get("video", [])
+                    if isinstance(video_data, list):
+                        if response_format == "url":
+                            return [item.get("url") for item in video_data]
+                        return video_data
+                    if response_format == "url":
+                        return [video_data.get("url")]
+                    return [video_data]
+
+                if status in ("failed", "error"):
+                    raise RuntimeError(f"Video generation failed: {status_data}")
+
+                elapsed = time.time() - start_time
+                if elapsed > timeout:
+                    raise TimeoutError(
+                        f"Generation {generation_id} timed out after {timeout} seconds"
+                    )
+
+                await asyncio.sleep(poll_interval)

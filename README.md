@@ -1,6 +1,9 @@
 # langchain-aimlapi
 
-This package contains the LangChain integration with Aimlapi
+This package contains the LangChain integration with Aimlapi. AI/ML API provides
+over **300** models including Deepseek, Gemini and ChatGPT. All models are
+served with enterprise-grade rate limits and uptimes via
+[Aimlapi](https://aimlapi.com/app/?utm_source=langchain&utm_medium=github&utm_campaign=integration).
 
 ## Installation
 
