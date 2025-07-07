@@ -8,9 +8,9 @@ This package contains the LangChain integration with Aimlapi
 pip install -U langchain-aimlapi
 ```
 
-And you should configure credentials by setting the following environment variables:
+And you should configure credentials by setting the following environment variable:
 
-* TODO: fill this out
+* `AIMLAPI_API_KEY` – your AI/ML API key
 
 ## Chat Models
 

@@ -1,96 +1,135 @@
-from typing import List
+"""Wrapper around AI/ML API's Embeddings API."""
 
+import logging
+import warnings
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Union
+
+import openai
 from langchain_core.embeddings import Embeddings
+from langchain_core.utils import from_env, get_pydantic_field_names, secret_from_env
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from typing_extensions import Self
+
+logger = logging.getLogger(__name__)
 
 
-class AimlapiEmbeddings(Embeddings):
-    """Aimlapi embedding model integration.
+class AimlapiEmbeddings(BaseModel, Embeddings):
+    """AI/ML API embedding model integration."""
 
-    # TODO: Replace with relevant packages, env vars.
-    Setup:
-        Install ``langchain-aimlapi`` and set environment variable
-        ``AIMLAPI_API_KEY``.
+    client: Any = Field(default=None, exclude=True)  #: :meta private:
+    async_client: Any = Field(default=None, exclude=True)  #: :meta private:
+    model: str = "text-embedding-ada-002"
+    dimensions: Optional[int] = None
+    aimlapi_api_key: Optional[SecretStr] = Field(
+        alias="api_key",
+        default_factory=secret_from_env("AIMLAPI_API_KEY", default="dummytoken"),
+    )
+    aimlapi_api_base: str = Field(
+        default_factory=from_env(
+            "AIMLAPI_API_BASE", default="https://api.aimlapi.com/v1/"
+        ),
+        alias="base_url",
+    )
+    embedding_ctx_length: int = 4096
+    allowed_special: Union[Literal["all"], Set[str]] = set()
+    disallowed_special: Union[Literal["all"], Set[str], Sequence[str]] = "all"
+    chunk_size: int = 1000
+    max_retries: int = 2
+    request_timeout: Optional[Union[float, Tuple[float, float], Any]] = Field(
+        default=None, alias="timeout"
+    )
+    show_progress_bar: bool = False
+    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    skip_empty: bool = False
+    default_headers: Union[Mapping[str, str], None] = None
+    default_query: Union[Mapping[str, object], None] = None
+    http_client: Union[Any, None] = None
+    http_async_client: Union[Any, None] = None
 
-        .. code-block:: bash
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        protected_namespaces=(),
+    )
 
-            pip install -U langchain-aimlapi
-            export AIMLAPI_API_KEY="your-api-key"
+    @model_validator(mode="before")
+    @classmethod
+    def build_extra(cls, values: Dict[str, Any]) -> Any:
+        all_required_field_names = get_pydantic_field_names(cls)
+        extra = values.get("model_kwargs", {})
+        for field_name in list(values):
+            if field_name in extra:
+                raise ValueError(f"Found {field_name} supplied twice.")
+            if field_name not in all_required_field_names:
+                warnings.warn(
+                    f"WARNING! {field_name} is not default parameter. {field_name} was transferred to model_kwargs. Please confirm that {field_name} is what you intended."
+                )
+                extra[field_name] = values.pop(field_name)
 
-    # TODO: Populate with relevant params.
-    Key init args — completion params:
-        model: str
-            Name of Aimlapi model to use.
-
-    See full list of supported init args and their descriptions in the params section.
-
-    # TODO: Replace with relevant init params.
-    Instantiate:
-        .. code-block:: python
-
-            from langchain_aimlapi import AimlapiEmbeddings
-
-            embed = AimlapiEmbeddings(
-                model="...",
-                # api_key="...",
-                # other params...
+        invalid_model_kwargs = all_required_field_names.intersection(extra.keys())
+        if invalid_model_kwargs:
+            raise ValueError(
+                f"Parameters {invalid_model_kwargs} should be specified explicitly. Instead they were passed in as part of `model_kwargs` parameter."
             )
 
-    Embed single text:
-        .. code-block:: python
+        values["model_kwargs"] = extra
+        return values
 
-            input_text = "The meaning of life is 42"
-            embed.embed_query(input_text)
+    @model_validator(mode="after")
+    def post_init(self) -> Self:
+        client_params: dict = {
+            "api_key": self.aimlapi_api_key.get_secret_value() if self.aimlapi_api_key else None,
+            "base_url": self.aimlapi_api_base,
+            "timeout": self.request_timeout,
+            "max_retries": self.max_retries,
+            "default_headers": self.default_headers,
+            "default_query": self.default_query,
+        }
+        if not (self.client or None):
+            sync_specific: dict = {"http_client": self.http_client} if self.http_client else {}
+            self.client = openai.OpenAI(**client_params, **sync_specific).embeddings
+        if not (self.async_client or None):
+            async_specific: dict = {"http_client": self.http_async_client} if self.http_async_client else {}
+            self.async_client = openai.AsyncOpenAI(**client_params, **async_specific).embeddings
+        return self
 
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if token-level streaming isn't supported.
-    Embed multiple text:
-        .. code-block:: python
-
-             input_texts = ["Document 1...", "Document 2..."]
-            embed.embed_documents(input_texts)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    # TODO: Delete if native async isn't supported.
-    Async:
-        .. code-block:: python
-
-            await embed.aembed_query(input_text)
-
-            # multiple:
-            # await embed.aembed_documents(input_texts)
-
-        .. code-block:: python
-
-            # TODO: Example output.
-
-    """
-
-    def __init__(self, model: str):
-        self.model = model
+    @property
+    def _invocation_params(self) -> Dict[str, Any]:
+        params: Dict = {"model": self.model, **self.model_kwargs}
+        if self.dimensions is not None:
+            params["dimensions"] = self.dimensions
+        return params
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed search docs."""
-        return [[0.5, 0.6, 0.7] for _ in texts]
+        embeddings = []
+        params = self._invocation_params
+        for text in texts:
+            response = self.client.create(input=text, **params)
+            if not isinstance(response, dict):
+                response = response.model_dump()
+            embeddings.extend([i["embedding"] for i in response["data"]])
+        return embeddings
 
     def embed_query(self, text: str) -> List[float]:
-        """Embed query text."""
-        return self.embed_documents([text])[0]
+        params = self._invocation_params
+        response = self.client.create(input=text, **params)
+        if not isinstance(response, dict):
+            response = response.model_dump()
+        return response["data"][0]["embedding"]
 
-    # optional: add custom async implementations here
-    # you can also delete these, and the base class will
-    # use the default implementation, which calls the sync
-    # version in an async executor:
+    async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+        embeddings = []
+        params = self._invocation_params
+        for text in texts:
+            response = await self.async_client.create(input=text, **params)
+            if not isinstance(response, dict):
+                response = response.model_dump()
+            embeddings.extend([i["embedding"] for i in response["data"]])
+        return embeddings
 
-    # async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
-    #     """Asynchronous Embed search docs."""
-    #     ...
-
-    # async def aembed_query(self, text: str) -> List[float]:
-    #     """Asynchronous Embed query text."""
-    #     ...
+    async def aembed_query(self, text: str) -> List[float]:
+        params = self._invocation_params
+        response = await self.async_client.create(input=text, **params)
+        if not isinstance(response, dict):
+            response = response.model_dump()
+        return response["data"][0]["embedding"]

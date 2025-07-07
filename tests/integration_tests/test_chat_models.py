@@ -17,5 +17,4 @@ class TestChatParrotLinkIntegration(ChatModelIntegrationTests):
         return {
             "model": "bird-brain-001",
             "temperature": 0,
-            "parrot_buffer_length": 50,
         }
