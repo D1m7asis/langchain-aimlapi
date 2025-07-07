@@ -25,12 +25,40 @@ def test_retry_and_model_kwargs(monkeypatch):
     client.completions.create = mock_create
     monkeypatch.setattr(llm, "_client", lambda: client)
 
-    result = llm._call("hello")
+    with monkeypatch.context() as m:
+        m.setattr("time.sleep", lambda *_: None)
+        result = llm._call("hello")
     assert mock_create.call_count == 3
     assert result.generations[0][0].text == "hi"
 
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["model"] == "bird-brain-001"
     assert call_kwargs["temperature"] is None
+    assert call_kwargs["echo"] is True
+
+
+def test_parrot_fallback_llm():
+    llm = AimlapiLLM(model="bird-brain-001", parrot_buffer_length=4)
+    result = llm._call("hello world")
+    assert result.generations[0][0].text == "orld"
+
+
+def test_stop_filtering_and_normalization_llm(monkeypatch):
+    llm = AimlapiLLM(
+        model="bird-brain-001",
+        api_key="key",
+        model_kwargs={"model": "bad", "stop": ["x"], "echo": True},
+    )
+    dummy = _DummyResponse("ok")
+    mock_create = MagicMock(return_value=dummy)
+    client = MagicMock()
+    client.completions.create = mock_create
+    monkeypatch.setattr(llm, "_client", lambda: client)
+
+    llm._call("hi", stop="end")
+
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["model"] == "bird-brain-001"
+    assert call_kwargs["stop"] == ["end"]
     assert call_kwargs["echo"] is True
 

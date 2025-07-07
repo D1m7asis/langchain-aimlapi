@@ -16,7 +16,7 @@ from langchain_core.callbacks import (
 from langchain_core.language_models.llms import LLM
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import Generation, LLMResult
-from openai import OpenAIError, APIConnectionError
+from openai import APIConnectionError, OpenAIError
 from pydantic import Field
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
@@ -113,6 +113,9 @@ class AimlapiLLM(LLM):
             for k, v in self.model_kwargs.items()
             if k not in {"model", "temperature", "max_tokens", "stop"}
         }
+        if isinstance(stop, str):
+            stop = [stop]
+
         params = {
             "model": self.model_name,
             "prompt": prompt,
@@ -165,6 +168,8 @@ class AimlapiLLM(LLM):
             for k, v in self.model_kwargs.items()
             if k not in {"model", "temperature", "max_tokens", "stop"}
         }
+        if isinstance(stop, str):
+            stop = [stop]
         params = {
             "model": self.model_name,
             "prompt": prompt,

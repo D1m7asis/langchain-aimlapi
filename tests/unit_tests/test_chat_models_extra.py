@@ -19,19 +19,51 @@ def test_with_structured_output_local():
     assert isinstance(result, SampleSchema)
 
 
-def test_execute_with_retry():
-    model = ChatAimlapi(model="bird-brain-001", max_retries=1)
+def test_execute_with_retry_sync_backoff():
+    model = ChatAimlapi(model="bird-brain-001", max_retries=2)
     calls = []
 
     def fn():
-        if not calls:
+        if len(calls) < 2:
             calls.append(1)
             raise OpenAIError("boom")
         return "ok"
 
-    with mock.patch("time.sleep", return_value=None):
-        assert model._execute_with_retry(fn) == "ok"
-    assert calls == [1]
+    with mock.patch("time.sleep", return_value=None) as sleep_mock:
+        assert model._execute_with_retry_sync(fn) == "ok"
+    # ensure two backoff attempts were made with exponential delays
+    assert [c.args[0] for c in sleep_mock.call_args_list] == [1, 2]
+
+
+def test_parrot_fallback_chat():
+    model = ChatAimlapi(model="bird-brain-001", parrot_buffer_length=3)
+    result = model._generate([HumanMessage(content="hello world")])
+    assert result.generations[0].message.content == "rld"
+
+
+def test_stop_filtering_and_normalization():
+    model = ChatAimlapi(
+        model="bird-brain-001",
+        api_key="key",
+        model_kwargs={"stop": ["x"], "echo": True},
+    )
+    dummy_resp = types.SimpleNamespace(
+        choices=[
+            types.SimpleNamespace(
+                message=types.SimpleNamespace(content="ok"),
+                finish_reason="stop",
+            )
+        ],
+        usage=types.SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+    )
+    mock_create = mock.MagicMock(return_value=dummy_resp)
+    client = types.SimpleNamespace(chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=mock_create)))
+    with mock.patch.object(model, "_client", return_value=client):
+        model._generate([HumanMessage(content="hi")], stop="end")
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["model"] == "bird-brain-001"
+    assert call_kwargs["stop"] == ["end"]
+    assert call_kwargs["echo"] is True
 
 
 def test_stream_usage_deltas():
