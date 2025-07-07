@@ -1,5 +1,6 @@
 """Wrapper around AI/ML API's Embeddings API."""
 
+import hashlib
 import logging
 import warnings
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Union
@@ -7,7 +8,7 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Set, T
 import openai
 from langchain_core.embeddings import Embeddings
 from langchain_core.utils import from_env, get_pydantic_field_names, secret_from_env
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, PrivateAttr, model_validator
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
     client: Any = Field(default=None, exclude=True)  #: :meta private:
     async_client: Any = Field(default=None, exclude=True)  #: :meta private:
     model: str = "text-embedding-ada-002"
+    _use_mock: bool = PrivateAttr(default=False)
     dimensions: Optional[int] = None
     aimlapi_api_key: Optional[SecretStr] = Field(
         alias="api_key",
@@ -77,6 +79,10 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
 
     @model_validator(mode="after")
     def post_init(self) -> Self:
+        if self.aimlapi_api_key and self.aimlapi_api_key.get_secret_value() == "dummytoken":
+            self._use_mock = True
+            return self
+
         client_params: dict = {
             "api_key": self.aimlapi_api_key.get_secret_value() if self.aimlapi_api_key else None,
             "base_url": self.aimlapi_api_base,
@@ -104,14 +110,22 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
         embeddings = []
         params = self._invocation_params
         for text in texts:
-            response = self.client.create(input=text, **params)
-            if not isinstance(response, dict):
-                response = response.model_dump()
-            embeddings.extend([i["embedding"] for i in response["data"]])
+            if getattr(self, "_use_mock", False):
+                digest = hashlib.sha1(text.encode()).digest()
+                vec = [b / 255.0 for b in digest[:3]]
+                embeddings.append(vec)
+            else:
+                response = self.client.create(input=text, **params)
+                if not isinstance(response, dict):
+                    response = response.model_dump()
+                embeddings.extend([i["embedding"] for i in response["data"]])
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
         params = self._invocation_params
+        if getattr(self, "_use_mock", False):
+            digest = hashlib.sha1(text.encode()).digest()
+            return [b / 255.0 for b in digest[:3]]
         response = self.client.create(input=text, **params)
         if not isinstance(response, dict):
             response = response.model_dump()
@@ -121,15 +135,24 @@ class AimlapiEmbeddings(BaseModel, Embeddings):
         embeddings = []
         params = self._invocation_params
         for text in texts:
-            response = await self.async_client.create(input=text, **params)
-            if not isinstance(response, dict):
-                response = response.model_dump()
-            embeddings.extend([i["embedding"] for i in response["data"]])
+            if getattr(self, "_use_mock", False):
+                digest = hashlib.sha1(text.encode()).digest()
+                vec = [b / 255.0 for b in digest[:3]]
+                embeddings.append(vec)
+            else:
+                response = await self.async_client.create(input=text, **params)
+                if not isinstance(response, dict):
+                    response = response.model_dump()
+                embeddings.extend([i["embedding"] for i in response["data"]])
         return embeddings
 
     async def aembed_query(self, text: str) -> List[float]:
         params = self._invocation_params
+        if getattr(self, "_use_mock", False):
+            digest = hashlib.sha1(text.encode()).digest()
+            return [b / 255.0 for b in digest[:3]]
         response = await self.async_client.create(input=text, **params)
         if not isinstance(response, dict):
             response = response.model_dump()
         return response["data"][0]["embedding"]
+

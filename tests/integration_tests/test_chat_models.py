@@ -18,3 +18,7 @@ class TestChatParrotLinkIntegration(ChatModelIntegrationTests):
             "model": "bird-brain-001",
             "temperature": 0,
         }
+
+    @property
+    def returns_usage_metadata(self) -> bool:
+        return False
