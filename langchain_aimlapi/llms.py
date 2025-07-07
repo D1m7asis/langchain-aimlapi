@@ -93,7 +93,7 @@ class AimlapiLLM(LLM):
             raise Exception(f"Aimlapi Server: Error {response.status_code}")
         elif response.status_code >= 400:
             raise ValueError(f"Aimlapi received an invalid payload: {response.text}")
-        elif response.status_code != 200:
+        elif response.status_code not in (200, 201):
             raise Exception(
                 f"Aimlapi returned an unexpected response with status {response.status_code}: {response.text}"
             )
