@@ -1,10 +1,18 @@
-"""Completion models for Aimlapi."""
+"""Completion models for Aimlapi.
+
+Setup:
+    Install ``langchain-aimlapi`` and set ``AIMLAPI_API_KEY``.
+
+    .. code-block:: bash
+
+        pip install -U langchain-aimlapi
+        export AIMLAPI_API_KEY="your-key"
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from typing import Any, ClassVar, Dict, List, Optional
 
@@ -16,8 +24,11 @@ from langchain_core.callbacks import (
 from langchain_core.language_models.llms import LLM
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import Generation, LLMResult
-from openai import APIConnectionError, OpenAIError
-from pydantic import Field
+from langchain_core.utils import secret_from_env
+from openai import OpenAIError
+from openai.error import APIConnectionError
+from pydantic import ConfigDict, Field, model_validator
+from typing_extensions import Self
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
 
@@ -38,26 +49,60 @@ class AimlapiLLM(LLM):
     timeout: Optional[float] = None
     stop: Optional[List[str]] = None
     max_retries: int = 2
-    api_key: Optional[str] = None
+    api_key: Optional[str] = Field(
+        default_factory=secret_from_env("AIMLAPI_API_KEY", default=None)
+    )
     base_url: str = "https://api.aimlapi.com/v1"
     parrot_buffer_length: int = 0
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    client: Optional[openai.OpenAI] = Field(default=None, exclude=True)
+    async_client: Optional[openai.AsyncOpenAI] = Field(default=None, exclude=True)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def validate_environment(self) -> Self:
+        """Create API clients if a key is available."""
+        client_params = {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "timeout": self.timeout,
+            "default_headers": AIMLAPI_HEADERS,
+        }
+        if self.max_retries is not None:
+            client_params["max_retries"] = self.max_retries
+        if self.api_key:
+            if self.client is None:
+                self.client = openai.OpenAI(**client_params).completions
+            if self.async_client is None:
+                self.async_client = openai.AsyncOpenAI(**client_params).completions
+        return self
 
     @property
     def _llm_type(self) -> str:
         return "aimlapi-llm"
 
+    @property
+    def lc_secrets(self) -> Dict[str, str]:
+        """Mapping of secret fields for LangChain serialization."""
+        return {"api_key": "AIMLAPI_API_KEY"}
+
+    @classmethod
+    def get_lc_namespace(cls) -> List[str]:
+        """Namespace for LangChain object."""
+        return ["langchain", "llms", "aimlapi"]
+
+    @property
+    def lc_attributes(self) -> Dict[str, Any]:
+        """Attributes to include during serialization."""
+        attrs: Dict[str, Any] = {}
+        if self.base_url:
+            attrs["base_url"] = self.base_url
+        return attrs
+
     def _client(self) -> Optional[openai.OpenAI]:
-        api_key = self.api_key or os.getenv("AIMLAPI_API_KEY")
-        if api_key is None:
-            return None
-        return openai.OpenAI(
-            api_key=api_key,
-            base_url=self.base_url,
-            timeout=self.timeout,
-            max_retries=self.max_retries,
-            default_headers=AIMLAPI_HEADERS,
-        )
+        """Return the cached sync OpenAI client."""
+        return self.client
 
     MAX_BACKOFF: ClassVar[int] = 8
 
@@ -70,9 +115,7 @@ class AimlapiLLM(LLM):
             except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
                 last_err = err
                 backoff = min(2**attempt, self.MAX_BACKOFF)
-                logger.warning(
-                    "AimlapiLLM error on attempt %s: %s", attempt + 1, err
-                )
+                logger.warning("AimlapiLLM error on attempt %s: %s", attempt + 1, err)
                 time.sleep(backoff)
         raise last_err  # type: ignore[misc]
 
@@ -85,11 +128,59 @@ class AimlapiLLM(LLM):
             except (OpenAIError, APIConnectionError, TimeoutError) as err:  # noqa: PERF203
                 last_err = err
                 backoff = min(2**attempt, self.MAX_BACKOFF)
-                logger.warning(
-                    "AimlapiLLM error on attempt %s: %s", attempt + 1, err
-                )
+                logger.warning("AimlapiLLM error on attempt %s: %s", attempt + 1, err)
                 await asyncio.sleep(backoff)
         raise last_err  # type: ignore[misc]
+
+    def _build_params(
+        self,
+        prompt: str,
+        stop: Optional[List[str]],
+        *,
+        stream: bool = False,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        filtered = {
+            k: v
+            for k, v in self.model_kwargs.items()
+            if k not in {"model", "temperature", "max_tokens", "stop"}
+        }
+        if isinstance(stop, str):
+            stop = [stop]
+        params = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stop": stop,
+            **filtered,
+            **kwargs,
+        }
+        if stream:
+            params["stream"] = True
+        return params
+
+    def _llm_from_response(self, choice: Any, usage: Any) -> LLMResult:
+        message = AIMessage(
+            content=choice.text or "",
+            usage_metadata={
+                "input_tokens": usage.prompt_tokens,
+                "output_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+            },
+            response_metadata={
+                "model_name": self.model_name,
+                "finish_reason": choice.finish_reason,
+            },
+        )
+        generation = Generation(text=choice.text or "", message=message)
+        return LLMResult(generations=[[generation]])
+
+    def _parrot_result(self, prompt: str) -> LLMResult:
+        buffer_len = self.parrot_buffer_length or 50
+        text = prompt[-buffer_len:]
+        message = AIMessage(content=text)
+        return LLMResult(generations=[[Generation(text=text, message=message)]])
 
     def _call(
         self,
@@ -100,51 +191,12 @@ class AimlapiLLM(LLM):
     ) -> LLMResult:
         client = self._client()
         if client is None:
-            # Build and return fallback text when no API key is available
-            buffer_len = self.parrot_buffer_length or 50
-            text = prompt[-buffer_len:]
-            message = AIMessage(content=text)
-            return LLMResult(
-                generations=[[Generation(text=text, message=message)]]
-            )
-        # Build request parameters and forward model_kwargs
-        filtered_kwargs = {
-            k: v
-            for k, v in self.model_kwargs.items()
-            if k not in {"model", "temperature", "max_tokens", "stop"}
-        }
-        if isinstance(stop, str):
-            stop = [stop]
+            return self._parrot_result(prompt)
 
-        params = {
-            "model": self.model_name,
-            "prompt": prompt,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "stop": stop,
-            **filtered_kwargs,
-            **kwargs,
-        }
-        # Execute request with retry and backoff
-        response = self._execute_with_retry_sync(
-            client.completions.create, **params
-        )
+        params = self._build_params(prompt, stop, **kwargs)
+        response = self._execute_with_retry_sync(client.create, **params)
         choice = response.choices[0]
-        usage = response.usage
-        message = AIMessage(
-            content=choice.text or "",
-            usage_metadata={
-                "input_tokens": usage.prompt_tokens,
-                "output_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens,
-            },
-            response_metadata={
-                "model_name": self.model_name,
-                "finish_reason": choice.finish_reason,
-            },
-        )
-        generation = Generation(text=choice.text or "", message=message)
-        return LLMResult(generations=[[generation]])
+        return self._llm_from_response(choice, response.usage)
 
     async def _acall(
         self,
@@ -153,49 +205,11 @@ class AimlapiLLM(LLM):
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> LLMResult:
-        client = self._client()
+        client = self.async_client
         if client is None:
-            # Build and return fallback text when no API key is available
-            buffer_len = self.parrot_buffer_length or 50
-            text = prompt[-buffer_len:]
-            message = AIMessage(content=text)
-            return LLMResult(
-                generations=[[Generation(text=text, message=message)]]
-            )
-        # Build request parameters and forward model_kwargs
-        filtered_kwargs = {
-            k: v
-            for k, v in self.model_kwargs.items()
-            if k not in {"model", "temperature", "max_tokens", "stop"}
-        }
-        if isinstance(stop, str):
-            stop = [stop]
-        params = {
-            "model": self.model_name,
-            "prompt": prompt,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "stop": stop,
-            **filtered_kwargs,
-            **kwargs,
-        }
-        # Execute request with retry and backoff
-        response = await self._execute_with_retry_async(
-            client.completions.create, **params
-        )  # type: ignore[call-arg]
+            return self._parrot_result(prompt)
+
+        params = self._build_params(prompt, stop, **kwargs)
+        response = await self._execute_with_retry_async(client.create, **params)
         choice = response.choices[0]
-        usage = response.usage
-        message = AIMessage(
-            content=choice.text or "",
-            usage_metadata={
-                "input_tokens": usage.prompt_tokens,
-                "output_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens,
-            },
-            response_metadata={
-                "model_name": self.model_name,
-                "finish_reason": choice.finish_reason,
-            },
-        )
-        generation = Generation(text=choice.text or "", message=message)
-        return LLMResult(generations=[[generation]])
+        return self._llm_from_response(choice, response.usage)

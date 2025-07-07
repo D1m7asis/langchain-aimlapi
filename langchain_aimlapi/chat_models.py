@@ -1,10 +1,26 @@
-"""Aimlapi chat models."""
+r"""Aimlapi chat models.
 
+Setup:
+    Install ``langchain-aimlapi`` and set environment variable ``AIMLAPI_API_KEY``.
+
+    .. code-block:: bash
+
+        pip install -U langchain-aimlapi
+        export AIMLAPI_API_KEY="your-key"
+
+Instantiate::
+
+        from langchain_aimlapi import ChatAimlapi
+
+        llm = ChatAimlapi(model="bird-brain-001")
+        llm.invoke([("human", "Hello")])
+"""
+
+import asyncio
 import json
 import logging
 import os
 import time
-import asyncio
 from typing import Any, Dict, Iterator, List, Optional, Type
 
 import openai
@@ -12,7 +28,6 @@ from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain_openai.chat_models.base import BaseChatOpenAI
 from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
@@ -28,9 +43,13 @@ from langchain_core.outputs import (
     LLMResult,
 )
 from langchain_core.runnables import Runnable, RunnableLambda, RunnableMap
+from langchain_core.utils import secret_from_env
 from langchain_core.utils.function_calling import convert_to_json_schema
-from openai import APIConnectionError, OpenAIError
-from pydantic import BaseModel, Field, model_validator
+from langchain_openai.chat_models.base import BaseChatOpenAI
+from openai import OpenAIError
+from openai.error import APIConnectionError
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing_extensions import Self
 
 from langchain_aimlapi.constants import AIMLAPI_HEADERS
 
@@ -54,13 +73,32 @@ class ChatAimlapi(BaseChatOpenAI):
     timeout: Optional[float] = None
     stop: Optional[List[str]] = None
     max_retries: int = 2
-    api_key: Optional[str] = None
+    api_key: Optional[str] = Field(
+        default_factory=secret_from_env("AIMLAPI_API_KEY", default=None)
+    )
     base_url: str = "https://api.aimlapi.com/v1"
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    client: Optional[openai.OpenAI] = Field(default=None, exclude=True)
+    async_client: Optional[openai.AsyncOpenAI] = Field(default=None, exclude=True)
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @model_validator(mode="after")
-    def validate_environment(self) -> "ChatAimlapi":
-        """Override base environment validation to allow missing API key."""
+    def validate_environment(self) -> Self:
+        """Create API clients if a key is available."""
+        client_params = {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "timeout": self.timeout,
+            "default_headers": AIMLAPI_HEADERS,
+        }
+        if self.max_retries is not None:
+            client_params["max_retries"] = self.max_retries
+        if self.api_key:
+            if self.client is None:
+                self.client = openai.OpenAI(**client_params).chat.completions
+            if self.async_client is None:
+                self.async_client = openai.AsyncOpenAI(**client_params).chat.completions
         return self
 
     MAX_BACKOFF: int = 8
@@ -143,17 +181,27 @@ class ChatAimlapi(BaseChatOpenAI):
             "model_name": self.model_name,
         }
 
+    @property
+    def lc_secrets(self) -> Dict[str, str]:
+        """Mapping of secret fields for LangChain serialization."""
+        return {"api_key": "AIMLAPI_API_KEY"}
+
+    @classmethod
+    def get_lc_namespace(cls) -> List[str]:
+        """Namespace for LangChain object."""
+        return ["langchain", "chat_models", "aimlapi"]
+
+    @property
+    def lc_attributes(self) -> Dict[str, Any]:
+        """Attributes to include during serialization."""
+        attrs: Dict[str, Any] = {}
+        if self.base_url:
+            attrs["base_url"] = self.base_url
+        return attrs
+
     def _client(self) -> Optional[openai.OpenAI]:
-        api_key = self.api_key or os.getenv("AIMLAPI_API_KEY")
-        if api_key is None:
-            return None
-        return openai.OpenAI(
-            api_key=api_key,
-            base_url=self.base_url,
-            timeout=self.timeout,
-            max_retries=self.max_retries,
-            default_headers=AIMLAPI_HEADERS,
-        )
+        """Return the cached sync OpenAI client."""
+        return self.client
 
     @staticmethod
     def _convert_messages(messages: List[BaseMessage]) -> List[dict]:
@@ -169,53 +217,35 @@ class ChatAimlapi(BaseChatOpenAI):
             result.append({"role": role, "content": m.content})
         return result
 
-    def _generate(
+    def _build_params(
         self,
         messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        stop: Optional[List[str]],
+        *,
+        stream: bool = False,
         **kwargs: Any,
-    ) -> ChatResult:
-        client = self._client()
-        if client is None:
-            # fallback behaviour for tests without API key
-            last_message = messages[-1]
-            buffer_len = self.parrot_buffer_length or 50
-            text = last_message.content[-buffer_len:]
-            usage = {
-                "input_tokens": sum(len(m.content) for m in messages),
-                "output_tokens": len(text),
-                "total_tokens": sum(len(m.content) for m in messages) + len(text),
-            }
-            message = AIMessage(
-                content=text,
-                usage_metadata=usage,
-                response_metadata={
-                    "model_name": self.model_name,
-                    "finish_reason": "stop",
-                },
-            )
-            return ChatResult(generations=[ChatGeneration(message=message)])
-
-        filtered_kwargs = {
+    ) -> Dict[str, Any]:
+        filtered = {
             k: v
             for k, v in self.model_kwargs.items()
             if k not in {"model", "temperature", "max_tokens", "stop"}
         }
         if isinstance(stop, str):
             stop = [stop]
-
-        response = self._execute_with_retry_sync(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            **filtered_kwargs,
+        params = {
+            "model": self.model_name,
+            "messages": self._convert_messages(messages),
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stop": stop,
+            **filtered,
             **kwargs,
-        )
+        }
+        if stream:
+            params["stream"] = True
+        return params
 
+    def _chat_from_response(self, response: Any) -> ChatResult:
         choice = response.choices[0].message
         usage = response.usage
         message = AIMessage(
@@ -230,9 +260,96 @@ class ChatAimlapi(BaseChatOpenAI):
                 "finish_reason": response.choices[0].finish_reason,
             },
         )
+        return ChatResult(generations=[ChatGeneration(message=message)])
 
-        generation = ChatGeneration(message=message)
-        return ChatResult(generations=[generation])
+    def _parrot_result(self, messages: List[BaseMessage]) -> ChatResult:
+        buffer_len = self.parrot_buffer_length or 50
+        text = messages[-1].content[-buffer_len:]
+        usage = {
+            "input_tokens": sum(len(m.content) for m in messages),
+            "output_tokens": len(text),
+            "total_tokens": sum(len(m.content) for m in messages) + len(text),
+        }
+        message = AIMessage(
+            content=text,
+            usage_metadata=usage,
+            response_metadata={
+                "model_name": self.model_name,
+                "finish_reason": "stop",
+            },
+        )
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    def _parrot_stream(
+        self,
+        messages: List[BaseMessage],
+        run_manager: Optional[CallbackManagerForLLMRun],
+    ) -> Iterator[ChatGenerationChunk]:
+        buffer_len = self.parrot_buffer_length or 50
+        text = messages[-1].content[-buffer_len:]
+        input_tokens = sum(len(m.content) for m in messages)
+        for i, ch in enumerate(text):
+            usage = None
+            resp_meta = None
+            if i == 0:
+                usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": 1,
+                    "total_tokens": input_tokens + 1,
+                }
+                resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
+            kwargs_msg = {"content": ch}
+            if usage:
+                kwargs_msg["usage_metadata"] = usage
+            if resp_meta:
+                kwargs_msg["response_metadata"] = resp_meta
+            chunk = ChatGenerationChunk(message=AIMessageChunk(**kwargs_msg))
+            if run_manager:
+                run_manager.on_llm_new_token(ch, chunk=chunk)
+            yield chunk
+
+    async def _aparrot_stream(
+        self,
+        messages: List[BaseMessage],
+        run_manager: Optional[AsyncCallbackManagerForLLMRun],
+    ) -> Iterator[ChatGenerationChunk]:
+        buffer_len = self.parrot_buffer_length or 50
+        text = messages[-1].content[-buffer_len:]
+        input_tokens = sum(len(m.content) for m in messages)
+        for i, ch in enumerate(text):
+            usage = None
+            resp_meta = None
+            if i == 0:
+                usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": 1,
+                    "total_tokens": input_tokens + 1,
+                }
+                resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
+            kwargs_msg = {"content": ch}
+            if usage:
+                kwargs_msg["usage_metadata"] = usage
+            if resp_meta:
+                kwargs_msg["response_metadata"] = resp_meta
+            chunk = ChatGenerationChunk(message=AIMessageChunk(**kwargs_msg))
+            if run_manager:
+                await run_manager.on_llm_new_token(ch, chunk=chunk)
+            yield chunk
+
+    def _generate(
+        self,
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        client = self._client()
+        if client is None:
+            return self._parrot_result(messages)
+
+        params = self._build_params(messages, stop, **kwargs)
+        response = self._execute_with_retry_sync(client.create, **params)
+        return self._chat_from_response(response)
 
     def _stream(
         self,
@@ -243,50 +360,11 @@ class ChatAimlapi(BaseChatOpenAI):
     ) -> Iterator[ChatGenerationChunk]:
         client = self._client()
         if client is None:
-            buffer_len = self.parrot_buffer_length or 50
-            text = messages[-1].content[-buffer_len:]
-            input_tokens = sum(len(m.content) for m in messages)
-            for i, ch in enumerate(text):
-                usage = None
-                resp_meta = None
-                if i == 0:
-                    # first chunk: initialize usage & finish_reason
-                    usage = {
-                        "input_tokens": input_tokens,
-                        "output_tokens": 1,
-                        "total_tokens": input_tokens + 1,
-                    }
-                    resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
-                kwargs_msg = {"content": ch}
-                if usage is not None:
-                    kwargs_msg["usage_metadata"] = usage
-                if resp_meta is not None:
-                    kwargs_msg["response_metadata"] = resp_meta
-                gen_chunk = ChatGenerationChunk(message=AIMessageChunk(**kwargs_msg))
-                if run_manager:
-                    run_manager.on_llm_new_token(ch, chunk=gen_chunk)
-                yield gen_chunk
+            yield from self._parrot_stream(messages, run_manager)
             return
 
-        filtered_kwargs = {
-            k: v
-            for k, v in self.model_kwargs.items()
-            if k not in {"model", "temperature", "max_tokens", "stop"}
-        }
-        if isinstance(stop, str):
-            stop = [stop]
-
-        stream = self._execute_with_retry_sync(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            stream=True,
-            **filtered_kwargs,
-            **kwargs,
-        )
+        params = self._build_params(messages, stop, stream=True, **kwargs)
+        stream = self._execute_with_retry_sync(client.create, **params)
         prev_usage = None
         for chunk in stream:
             token = chunk.choices[0].delta.content or ""
@@ -323,61 +401,13 @@ class ChatAimlapi(BaseChatOpenAI):
         **kwargs: Any,
     ) -> ChatResult:
         """Async version of ``_generate`` using the same request params."""
-        client = self._client()
+        client = self.async_client
         if client is None:
-            buffer_len = self.parrot_buffer_length or 50
-            text = messages[-1].content[-buffer_len:]
-            usage = {
-                "input_tokens": sum(len(m.content) for m in messages),
-                "output_tokens": len(text),
-                "total_tokens": sum(len(m.content) for m in messages) + len(text),
-            }
-            message = AIMessage(
-                content=text,
-                usage_metadata=usage,
-                response_metadata={
-                    "model_name": self.model_name,
-                    "finish_reason": "stop",
-                },
-            )
-            return ChatResult(generations=[ChatGeneration(message=message)])
+            return self._parrot_result(messages)
 
-        filtered_kwargs = {
-            k: v
-            for k, v in self.model_kwargs.items()
-            if k not in {"model", "temperature", "max_tokens", "stop"}
-        }
-        if isinstance(stop, str):
-            stop = [stop]
-
-        response = await self._execute_with_retry_async(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            **filtered_kwargs,
-            **kwargs,
-        )
-
-        choice = response.choices[0].message
-        usage = response.usage
-        message = AIMessage(
-            content=choice.content or "",
-            usage_metadata={
-                "input_tokens": usage.prompt_tokens,
-                "output_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens,
-            },
-            response_metadata={
-                "model_name": self.model_name,
-                "finish_reason": response.choices[0].finish_reason,
-            },
-        )
-
-        generation = ChatGeneration(message=message)
-        return ChatResult(generations=[generation])
+        params = self._build_params(messages, stop, **kwargs)
+        response = await self._execute_with_retry_async(client.create, **params)
+        return self._chat_from_response(response)
 
     async def _astream(
         self,
@@ -387,51 +417,14 @@ class ChatAimlapi(BaseChatOpenAI):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         """Async version of ``_stream``."""
-        client = self._client()
+        client = self.async_client
         if client is None:
-            buffer_len = self.parrot_buffer_length or 50
-            text = messages[-1].content[-buffer_len:]
-            input_tokens = sum(len(m.content) for m in messages)
-            for i, ch in enumerate(text):
-                usage = None
-                resp_meta = None
-                if i == 0:
-                    usage = {
-                        "input_tokens": input_tokens,
-                        "output_tokens": 1,
-                        "total_tokens": input_tokens + 1,
-                    }
-                    resp_meta = {"model_name": self.model_name, "finish_reason": "stop"}
-                kwargs_msg = {"content": ch}
-                if usage is not None:
-                    kwargs_msg["usage_metadata"] = usage
-                if resp_meta is not None:
-                    kwargs_msg["response_metadata"] = resp_meta
-                gen_chunk = ChatGenerationChunk(message=AIMessageChunk(**kwargs_msg))
-                if run_manager:
-                    await run_manager.on_llm_new_token(ch, chunk=gen_chunk)
-                yield gen_chunk
+            async for chunk in self._aparrot_stream(messages, run_manager):
+                yield chunk
             return
 
-        filtered_kwargs = {
-            k: v
-            for k, v in self.model_kwargs.items()
-            if k not in {"model", "temperature", "max_tokens", "stop"}
-        }
-        if isinstance(stop, str):
-            stop = [stop]
-
-        stream = await self._execute_with_retry_async(
-            client.chat.completions.create,
-            model=self.model_name,
-            messages=self._convert_messages(messages),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop,
-            stream=True,
-            **filtered_kwargs,
-            **kwargs,
-        )
+        params = self._build_params(messages, stop, stream=True, **kwargs)
+        stream = await self._execute_with_retry_async(client.create, **params)
         prev_usage = None
         async for chunk in stream:
             token = chunk.choices[0].delta.content or ""
